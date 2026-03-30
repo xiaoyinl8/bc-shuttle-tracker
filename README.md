@@ -22,8 +22,7 @@ streamlit run app.py
 
 ## Deployment
 
-Deployed at: [Add your Streamlit Cloud URL here]
-
+Deployed at: https://bc-shuttle-tracker-8puopl5u2ctbgxwqrqx6nt.streamlit.app/
 ## Team
 
 - Xiaoyin Liu
