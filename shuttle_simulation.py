@@ -297,8 +297,17 @@ def initialize_simulation_state() -> None:
     if "feedback_history" not in st.session_state:
         st.session_state.feedback_history = []
 
+    if "rider_feedback_reports" not in st.session_state:
+        st.session_state.rider_feedback_reports = []
+
     if "show_feedback_modal" not in st.session_state:
         st.session_state.show_feedback_modal = False
+
+    if "show_boarding_feedback_form" not in st.session_state:
+        st.session_state.show_boarding_feedback_form = False
+
+    if "selected_feedback_bus_id" not in st.session_state:
+        st.session_state.selected_feedback_bus_id = None
 
     if "recent_updates" not in st.session_state:
         st.session_state.recent_updates = []
