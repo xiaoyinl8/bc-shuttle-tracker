@@ -42,7 +42,7 @@ driver_name = st.sidebar.text_input("Driver Name:", value="Mike")
 st.sidebar.divider()
 st.sidebar.info("Select the bus you are driving below, then tap a button to publish an instant rider-facing update.")
 
-# --- Shuttle selector (prominent, in main content) ---
+# --- Shuttle selector ---
 st.markdown("### Select Your Bus")
 shuttle_options = list(st.session_state.shuttle_data.keys())
 selected_shuttle = st.selectbox(
@@ -54,8 +54,11 @@ selected_shuttle = st.selectbox(
 shuttle = st.session_state.shuttle_data[selected_shuttle]
 base_speed = DEFAULT_SHUTTLES[selected_shuttle]["speed_mph"]
 
-# Current status badges
-delay = shuttle.get("delay_minutes", 0)
+# Read status from driver_shuttle_overrides (never reset by initialize_simulation_state)
+overrides = st.session_state.driver_shuttle_overrides.get(selected_shuttle, {})
+delay = overrides.get("delay_minutes", 0)
+is_express = overrides.get("is_express", False)
+
 if delay > 0:
     delay_status = f"⚠️ +{delay} min delay"
     delay_color = "#dc2626"
@@ -66,8 +69,8 @@ else:
     delay_status = "✅ On time"
     delay_color = "#16a34a"
 
-express_status = "🚀 Express mode ON" if shuttle.get("is_express") else "🛑 All stops"
-express_color = "#7c3aed" if shuttle.get("is_express") else "#6b7280"
+express_status = "🚀 Express mode ON" if is_express else "🛑 All stops"
+express_color = "#7c3aed" if is_express else "#6b7280"
 
 st.markdown(
     f"""
@@ -94,6 +97,17 @@ with col3:
 st.divider()
 
 
+def set_override(key: str, value) -> None:
+    """Persist a driver override so it survives shuttle_data rebuilds."""
+    st.session_state.driver_shuttle_overrides.setdefault(selected_shuttle, {})[key] = value
+    st.session_state.shuttle_data[selected_shuttle][key] = value
+
+
+def clear_override(key: str) -> None:
+    st.session_state.driver_shuttle_overrides.get(selected_shuttle, {}).pop(key, None)
+    st.session_state.shuttle_data[selected_shuttle].pop(key, None)
+
+
 def add_update(update_type: str, message: str) -> None:
     st.session_state.driver_updates.append(
         {
@@ -117,30 +131,34 @@ st.markdown("### ⏱️ Delay Status")
 left, right = st.columns(2)
 with left:
     if st.button("⏱️ Running 5 Min Late", use_container_width=True):
-        shuttle["on_time"] = False
-        shuttle["delay_minutes"] = 5
+        set_override("on_time", False)
+        set_override("delay_minutes", 5)
         add_update("delay", "Running 5 minutes late")
-        st.warning("Delay update sent to riders.")
+        st.toast("Delay update sent to riders.", icon="⏱️")
+        st.rerun()
 
     if st.button("🚨 Running 10+ Min Late", use_container_width=True):
-        shuttle["on_time"] = False
-        shuttle["delay_minutes"] = 10
+        set_override("on_time", False)
+        set_override("delay_minutes", 10)
         add_update("major_delay", "Running 10+ minutes late")
-        st.error("Major delay alert sent.")
+        st.toast("Major delay alert sent.", icon="🚨")
+        st.rerun()
 
 with right:
     if st.button("⏰ Arrived / Running Early", use_container_width=True):
-        shuttle["on_time"] = True
-        shuttle["delay_minutes"] = -2
+        set_override("on_time", True)
+        set_override("delay_minutes", -2)
         add_update("early", "Running approximately 2 minutes early")
-        st.success("Early arrival notice sent to riders.")
+        st.toast("Early arrival notice sent to riders.", icon="⏰")
+        st.rerun()
 
     if st.button("✅ Back on Schedule", use_container_width=True):
-        shuttle["on_time"] = True
-        shuttle["delay_minutes"] = 0
-        shuttle["speed_mph"] = base_speed
+        set_override("on_time", True)
+        set_override("delay_minutes", 0)
+        set_override("speed_mph", base_speed)
         add_update("on_time", "Back on schedule")
-        st.success("Status updated to on time.")
+        st.toast("Status updated to on time.", icon="✅")
+        st.rerun()
 
 st.divider()
 
@@ -149,17 +167,19 @@ st.markdown("### 🚀 Service Mode")
 mode_left, mode_right = st.columns(2)
 with mode_left:
     if st.button("🚀 Running Express (Skip Stops)", use_container_width=True):
-        shuttle["is_express"] = True
-        shuttle["speed_mph"] = round(base_speed * 1.35)
+        set_override("is_express", True)
+        set_override("speed_mph", round(base_speed * 1.35))
         add_update("express", "Running express — limited stops")
-        st.success("Express mode activated. Riders notified.")
+        st.toast("Express mode activated. Riders notified.", icon="🚀")
+        st.rerun()
 
 with mode_right:
     if st.button("🛑 Resuming All Stops", use_container_width=True):
-        shuttle["is_express"] = False
-        shuttle["speed_mph"] = base_speed
+        set_override("is_express", False)
+        set_override("speed_mph", base_speed)
         add_update("all_stops", "Resuming service at all stops")
-        st.info("Returned to all-stops service.")
+        st.toast("Returned to all-stops service.", icon="🛑")
+        st.rerun()
 
 st.divider()
 
@@ -168,25 +188,29 @@ st.markdown("### 📢 Other Updates")
 extra1, extra2 = st.columns(2)
 with extra1:
     if st.button("👥 At Capacity (Full)", use_container_width=True):
-        shuttle["capacity_pct"] = 95
+        set_override("capacity_pct", 95)
         add_update("capacity", "Shuttle at full capacity")
-        st.warning("Capacity alert sent.")
+        st.toast("Capacity alert sent.", icon="👥")
+        st.rerun()
 with extra2:
     if st.button("🔄 Route Changed", use_container_width=True):
         add_update("route_change", "Route temporarily changed")
-        st.warning("Route change reported.")
+        st.toast("Route change reported.", icon="🔄")
+        st.rerun()
 
 extra3, extra4 = st.columns(2)
 with extra3:
     if st.button("🚧 Construction Delay", use_container_width=True):
-        shuttle["on_time"] = False
+        set_override("on_time", False)
         add_update("construction", "Construction causing delays")
-        st.warning("Construction delay reported.")
+        st.toast("Construction delay reported.", icon="🚧")
+        st.rerun()
 with extra4:
     if st.button("❄️ Weather Delay", use_container_width=True):
-        shuttle["on_time"] = False
+        set_override("on_time", False)
         add_update("weather", "Weather causing delays")
-        st.info("Weather delay reported.")
+        st.toast("Weather delay reported.", icon="❄️")
+        st.rerun()
 
 st.divider()
 

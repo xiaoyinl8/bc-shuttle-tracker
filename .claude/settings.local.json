@@ -6,7 +6,9 @@
       "Bash(echo \"OK: $f\")",
       "Bash(echo \"ERROR: $f\")",
       "Bash(done)",
-      "Bash(python3 -m py_compile /Users/xiaoyin/Desktop/bc-shuttle-tracker-main/map_page.py)"
+      "Bash(python3 -m py_compile /Users/xiaoyin/Desktop/bc-shuttle-tracker-main/map_page.py)",
+      "Bash(python3 -m py_compile /Users/xiaoyin/Desktop/bc-shuttle-tracker-main/shuttle_simulation.py)",
+      "Bash(python3 -m py_compile /Users/xiaoyin/Desktop/bc-shuttle-tracker-main/pages/Driver_Interface.py)"
     ]
   }
 }

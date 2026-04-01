@@ -402,6 +402,13 @@ def initialize_simulation_state() -> None:
         }
     st.session_state.shuttle_data = shuttle_data
 
+    # Apply driver overrides (stored separately so they survive shuttle_data rebuilds)
+    if "driver_shuttle_overrides" not in st.session_state:
+        st.session_state.driver_shuttle_overrides = {}
+    for shuttle_id, overrides in st.session_state.driver_shuttle_overrides.items():
+        if shuttle_id in st.session_state.shuttle_data:
+            st.session_state.shuttle_data[shuttle_id].update(overrides)
+
     if "simulation_last_updated" not in st.session_state:
         st.session_state.simulation_last_updated = datetime.now()
 
