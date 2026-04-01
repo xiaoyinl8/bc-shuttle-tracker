@@ -131,26 +131,6 @@ def _capacity_visual_html(capacity_pct: int) -> str:
             """
         )
 
-<<<<<<< HEAD
-    svg = f"""
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 125 40" width="125" height="40" aria-hidden="true">
-      {''.join(people)}
-    </svg>
-    """
-    svg_src = f"data:image/svg+xml;utf8,{quote(svg)}"
-
-    return f"""
-    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:0.9rem;">
-        <div style="display:flex;align-items:flex-end;">
-            <img src="{svg_src}" alt="{_capacity_label(capacity_pct)} crowd graphic" style="width:125px;height:40px;display:block;" />
-        </div>
-        <div>
-            <div style="font-size:1.1rem;font-weight:700;color:{filled};">{_capacity_label(capacity_pct)}</div>
-            <div style="color:#6b7280;">Crowd level predicted from current vehicle data</div>
-        </div>
-    </div>
-    """
-=======
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 125 40" width="125" height="40" aria-hidden="true">{"".join(people)}</svg>'
     svg_src = f"data:image/svg+xml;utf8,{quote(svg)}"
 
@@ -165,7 +145,6 @@ def _capacity_visual_html(capacity_pct: int) -> str:
         f"</div>"
         f"</div>"
     )
->>>>>>> 7b93f7871576d0d15d9a795f434d0dd6e2537885
 
 
 def render_arrival_schedule(selected_stop: str) -> None:
