@@ -2,7 +2,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from shuttle_simulation import build_eta_prediction
+from shuttle_simulation import build_eta_prediction, display_stop_name
 
 
 def apply_shared_styles() -> None:
@@ -96,12 +96,12 @@ def _render_prediction_summary(selected_stop: str, eta: dict) -> None:
             st.markdown(
                 f"""
                 <div class="status-card">
-                    <div style="font-size:0.95rem;color:#6b7280;">For riders waiting at {selected_stop}</div>
+                    <div style="font-size:0.95rem;color:#6b7280;">For riders waiting at {display_stop_name(selected_stop)}</div>
                     <div style="font-size:2rem;font-weight:700;margin-top:0.35rem;">{eta['min']}-{eta['max']} min</div>
                     <div style="margin-top:0.5rem;">Bus: <strong>{best_match['label']}</strong></div>
                     <div>Route: <strong>{best_match['route']}</strong></div>
                     <div>Capacity prediction: <strong>{best_match['capacity']}</strong> ({best_match['capacity_pct']}%)</div>
-                    <div>Current segment: {best_match['current_stop']} → {best_match['next_stop']}</div>
+                    <div>Current segment: {display_stop_name(best_match['current_stop'])} → {display_stop_name(best_match['next_stop'])}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,

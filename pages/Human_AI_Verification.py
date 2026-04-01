@@ -1,7 +1,7 @@
 import streamlit as st
 
 from interaction_ui import apply_shared_styles, render_feedback_section
-from shuttle_simulation import initialize_simulation_state
+from shuttle_simulation import display_stop_name, initialize_simulation_state
 
 
 st.set_page_config(
@@ -21,6 +21,7 @@ selected_stop = st.selectbox(
     "Which stop are you evaluating?",
     stop_names,
     index=stop_names.index(st.session_state.user_stop),
+    format_func=display_stop_name,
 )
 
 if selected_stop != st.session_state.user_stop:

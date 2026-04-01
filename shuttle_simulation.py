@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime
 
 import streamlit as st
@@ -328,6 +329,13 @@ def capacity_label(capacity_pct: int) -> str:
     return "Empty"
 
 
+def display_stop_name(stop_name: str) -> str:
+    boarding_suffix = " (boarding)" if stop_name.endswith(" (boarding)") else ""
+    base_name = stop_name.removesuffix(" (boarding)")
+    cleaned_name = re.sub(r"^[A-Z]\.\s*", "", base_name)
+    return f"{cleaned_name}{boarding_suffix}"
+
+
 def _stop_dwell_seconds(stop_name: str) -> int:
     if stop_name.startswith(("A.", "G.", "M.")):
         return 35
@@ -401,6 +409,9 @@ def initialize_simulation_state() -> None:
 
     if "user_stop" not in st.session_state or st.session_state.user_stop not in st.session_state.stops:
         st.session_state.user_stop = "A. Conte Forum"
+
+    if "selected_route_filter" not in st.session_state:
+        st.session_state.selected_route_filter = "All routes"
 
     if "feedback_history" not in st.session_state:
         st.session_state.feedback_history = []
