@@ -97,6 +97,8 @@ def build_map_payload(selected_stop: str) -> dict:
                 "current_stop": shuttle["current_stop"],
                 "next_stop": shuttle["next_stop"],
                 "dwell_seconds_remaining": shuttle.get("dwell_seconds_remaining", 0.0),
+                "delay_minutes": shuttle.get("delay_minutes", 0),
+                "is_express": shuttle.get("is_express", False),
             }
         )
 
@@ -175,12 +177,21 @@ def render_arrival_schedule(selected_stop: str) -> None:
 
     best = eta["best_match"]
     if best:
+        delay = best.get("delay_minutes", 0)
+        if delay > 0:
+            delay_badge = f'<span style="background:#fef2f2;color:#dc2626;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">⚠️ +{delay} min delay</span>'
+        elif delay < 0:
+            delay_badge = f'<span style="background:#f0fdf4;color:#16a34a;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">⏰ Running {abs(delay)} min early</span>'
+        else:
+            delay_badge = '<span style="background:#f0fdf4;color:#16a34a;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">✅ On time</span>'
+        express_badge = '<span style="background:#f5f3ff;color:#7c3aed;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">🚀 Express</span>' if best.get("is_express") else ""
         st.markdown("### Next Shuttle")
         st.markdown(
             f"""
             <div class="status-card">
                 <div style="font-size:0.95rem;color:#6b7280;">Predicted Arrival</div>
-                <div style="font-size:2.8rem;font-weight:700;line-height:1;margin:0.5rem 0 1rem 0;">{eta['min']}-{eta['max']} min</div>
+                <div style="font-size:2.8rem;font-weight:700;line-height:1;margin:0.5rem 0 0.5rem 0;">{eta['min']}-{eta['max']} min</div>
+                <div style="margin-bottom:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap;">{delay_badge}{express_badge}</div>
                 <div style="font-weight:700;">{best['label']}</div>
                 <div>Route: <span style="color:{best['route_color']};font-weight:700;">{best['route']}</span></div>
                 <div>{'Currently boarding at' if '(boarding)' in best['next_stop'] else 'Heading to'} {display_stop_name(best['next_stop'])}</div>
@@ -198,26 +209,36 @@ def render_arrival_schedule(selected_stop: str) -> None:
             if "(boarding)" in arrival["next_stop"]
             else f"Next stop: {display_stop_name(arrival['next_stop'])}"
         )
-        st.markdown(
-            f"""
-            <div class="status-card">
-                <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
-                    <div>
-                        <div style="font-weight:700;font-size:1.05rem;">{arrival['label']}</div>
-                        <div style="color:{arrival['route_color']};font-weight:700;margin-top:0.2rem;">{arrival['route']}</div>
-                        <div style="color:#4b5563;margin-top:0.45rem;">{status_text}</div>
-                        <div style="color:#4b5563;">Capacity: {arrival['capacity']} ({arrival['capacity_pct']}%)</div>
-                        {_capacity_visual_html(arrival['capacity_pct'])}
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:1.8rem;font-weight:700;line-height:1;">{arrival['eta_minutes']} min</div>
-                        <div style="color:#6b7280;margin-top:0.35rem;">to {display_selected_stop}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        delay = arrival.get("delay_minutes", 0)
+        if delay > 0:
+            arrival_delay_badge = f'<span style="color:#dc2626;font-weight:700;font-size:0.8rem;">⚠️ +{delay} min delay</span>'
+        elif delay < 0:
+            arrival_delay_badge = f'<span style="color:#16a34a;font-weight:700;font-size:0.8rem;">⏰ {abs(delay)} min early</span>'
+        else:
+            arrival_delay_badge = ""
+        arrival_express_badge = '<span style="color:#7c3aed;font-weight:700;font-size:0.8rem;">🚀 Express</span>' if arrival.get("is_express") else ""
+        badges_html = " &nbsp;".join(b for b in [arrival_delay_badge, arrival_express_badge] if b)
+        badges_div = f'<div style="margin-top:0.3rem;">{badges_html}</div>' if badges_html else ""
+        card_html = (
+            '<div class="status-card">'
+            '<div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">'
+            '<div>'
+            f'<div style="font-weight:700;font-size:1.05rem;">{arrival["label"]}</div>'
+            f'<div style="color:{arrival["route_color"]};font-weight:700;margin-top:0.2rem;">{arrival["route"]}</div>'
+            f'<div style="color:#4b5563;margin-top:0.45rem;">{status_text}</div>'
+            f'<div style="color:#4b5563;">Capacity: {arrival["capacity"]} ({arrival["capacity_pct"]}%)</div>'
         )
+        card_html += badges_div + _capacity_visual_html(arrival["capacity_pct"])
+        card_html += (
+            '</div>'
+            '<div style="text-align:right;">'
+            f'<div style="font-size:1.8rem;font-weight:700;line-height:1;">{arrival["eta_minutes"]} min</div>'
+            f'<div style="color:#6b7280;margin-top:0.35rem;">to {display_selected_stop}</div>'
+            '</div>'
+            '</div>'
+            '</div>'
+        )
+        st.markdown(card_html, unsafe_allow_html=True)
 
 
 def render_live_dashboard(selected_stop: str) -> None:
@@ -549,13 +570,22 @@ def render_live_dashboard(selected_stop: str) -> None:
         }}
 
         function refreshPopup(shuttle) {{
+          const delayText = shuttle.delay_minutes > 0
+            ? `<br><span style="color:#dc2626;font-weight:700;">⚠️ Running ${{shuttle.delay_minutes}} min late</span>`
+            : shuttle.delay_minutes < 0
+              ? `<br><span style="color:#16a34a;font-weight:700;">⏰ Running ${{Math.abs(shuttle.delay_minutes)}} min early</span>`
+              : '';
+          const expressText = shuttle.is_express
+            ? `<br><span style="color:#7c3aed;font-weight:700;">🚀 Express</span>`
+            : '';
           shuttle.marker.bindPopup(
             `<b>${{shuttle.label}}</b><br>` +
             `Route: ${{shuttle.route}}<br>` +
             `Current stop: ${{displayStopName(shuttle.current_stop)}}<br>` +
             `Next stop: ${{displayStopName(shuttle.next_stop)}}<br>` +
             `Status: ${{shuttle.dwell_seconds_remaining > 0 ? 'Boarding passengers' : 'In service'}}<br>` +
-            `Capacity: ${{shuttle.capacity}} (${{shuttle.capacity_pct}}%)`
+            `Capacity: ${{shuttle.capacity}} (${{shuttle.capacity_pct}}%)` +
+            delayText + expressText
           );
         }}
 
@@ -616,9 +646,10 @@ def render_live_dashboard(selected_stop: str) -> None:
               const progressDelta = (stopProgress - shuttle.progress + 1) % 1;
               const remainingMiles = progressDelta * route.total_length;
               const etaMinutes = Math.max(1, Math.round((remainingMiles / Math.max(shuttle.speed_mph, 1)) * 60));
+              const adjustedEta = Math.max(1, etaMinutes + (shuttle.delay_minutes || 0));
               return {{
                 shuttle,
-                etaMinutes
+                etaMinutes: adjustedEta
               }};
             }})
             .sort((a, b) => a.etaMinutes - b.etaMinutes);
