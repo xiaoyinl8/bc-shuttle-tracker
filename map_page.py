@@ -5,7 +5,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from interaction_ui import apply_shared_styles
-from shuttle_simulation import build_eta_prediction, get_stop_arrivals, initialize_simulation_state, update_shuttle_positions
+from shuttle_simulation import (
+    build_eta_prediction,
+    display_stop_name,
+    get_stop_arrivals,
+    initialize_simulation_state,
+    update_shuttle_positions,
+)
 
 
 st.set_page_config(
@@ -99,9 +105,17 @@ def build_map_payload(selected_stop: str) -> dict:
     return {
         "selected_stop": selected_stop,
         "selected_coords": st.session_state.stops[selected_stop],
+        "selected_route_filter": st.session_state.selected_route_filter,
         "routes": routes,
         "shuttles": shuttles,
     }
+
+
+def _stop_option_label(stop_name: str) -> str:
+    routes = st.session_state.stops[stop_name]["routes"]
+    if len(routes) == 1:
+        return f"{display_stop_name(stop_name)} — {routes[0]}"
+    return f"{display_stop_name(stop_name)} — {', '.join(routes)}"
 
 
 def _capacity_label(capacity_pct: int) -> str:
@@ -152,6 +166,7 @@ def _capacity_visual_html(capacity_pct: int) -> str:
 def render_arrival_schedule(selected_stop: str) -> None:
     eta = build_eta_prediction(selected_stop)
     arrivals = get_stop_arrivals(selected_stop)
+    display_selected_stop = display_stop_name(selected_stop)
 
     st.markdown("## Shuttle Schedule")
     st.caption("AI-predicted arrivals for your selected stop, starting with the next bus and followed by upcoming service on each route.")
@@ -179,7 +194,7 @@ def render_arrival_schedule(selected_stop: str) -> None:
                 <div style="margin-bottom:0.6rem;display:flex;gap:0.4rem;flex-wrap:wrap;">{delay_badge}{express_badge}</div>
                 <div style="font-weight:700;">{best['label']}</div>
                 <div>Route: <span style="color:{best['route_color']};font-weight:700;">{best['route']}</span></div>
-                <div>{'Currently boarding at' if '(boarding)' in best['next_stop'] else 'Heading to'} {best['next_stop']}</div>
+                <div>{'Currently boarding at' if '(boarding)' in best['next_stop'] else 'Heading to'} {display_stop_name(best['next_stop'])}</div>
                 <div>{best['capacity']} • {best['capacity_pct']}% occupied</div>
                 {_capacity_visual_html(best['capacity_pct'])}
             </div>
@@ -189,7 +204,11 @@ def render_arrival_schedule(selected_stop: str) -> None:
 
     st.markdown("### Following Buses")
     for arrival in arrivals:
-        status_text = "Boarding now" if "(boarding)" in arrival["next_stop"] else f"Next stop: {arrival['next_stop']}"
+        status_text = (
+            "Boarding now"
+            if "(boarding)" in arrival["next_stop"]
+            else f"Next stop: {display_stop_name(arrival['next_stop'])}"
+        )
         delay = arrival.get("delay_minutes", 0)
         if delay > 0:
             arrival_delay_badge = f'<span style="color:#dc2626;font-weight:700;font-size:0.8rem;">⚠️ +{delay} min delay</span>'
@@ -214,7 +233,7 @@ def render_arrival_schedule(selected_stop: str) -> None:
             '</div>'
             '<div style="text-align:right;">'
             f'<div style="font-size:1.8rem;font-weight:700;line-height:1;">{arrival["eta_minutes"]} min</div>'
-            f'<div style="color:#6b7280;margin-top:0.35rem;">to {selected_stop}</div>'
+            f'<div style="color:#6b7280;margin-top:0.35rem;">to {display_selected_stop}</div>'
             '</div>'
             '</div>'
             '</div>'
@@ -297,6 +316,23 @@ def render_live_dashboard(selected_stop: str) -> None:
           margin-right: 8px;
           margin-top: 8px;
         }}
+        .route-filter {{
+          width: 100%;
+          text-align: left;
+          border: 0;
+          background: transparent;
+          border-radius: 12px;
+          padding: 10px 12px;
+          cursor: pointer;
+          transition: background 0.18s ease, transform 0.18s ease;
+        }}
+        .route-filter:hover {{
+          background: rgba(15, 23, 42, 0.04);
+        }}
+        .route-filter.active {{
+          background: rgba(15, 23, 42, 0.06);
+          transform: translateX(2px);
+        }}
         .bus-marker {{
           width: 34px;
           height: 34px;
@@ -355,6 +391,7 @@ def render_live_dashboard(selected_stop: str) -> None:
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       <script>
         const payload = {payload};
+        const displayStopName = (name) => name.replace(/^[A-Z]\\.\\s*/, '');
         const stopTitle = document.getElementById('stop-title');
         const serviceMeta = document.getElementById('service-meta');
         const routeInfo = document.getElementById('route-info');
@@ -362,6 +399,8 @@ def render_live_dashboard(selected_stop: str) -> None:
           [payload.selected_coords.lat, payload.selected_coords.lon],
           14
         );
+        let activeRoute = payload.selected_route_filter !== 'All routes' ? payload.selected_route_filter : null;
+        const routeLayers = {{}};
 
         L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
           maxZoom: 19,
@@ -370,22 +409,30 @@ def render_live_dashboard(selected_stop: str) -> None:
 
         const routeEntries = Object.entries(payload.routes);
         routeEntries.forEach(([routeName, route]) => {{
-          L.polyline(route.path, {{
+          const polyline = L.polyline(route.path, {{
             color: route.color,
             weight: 6,
             opacity: 0.9
           }}).addTo(map).bindTooltip(routeName);
 
+          const stopMarkers = [];
           route.stops.forEach((stop) => {{
             const isSelected = stop.name === payload.selected_stop;
-            L.circleMarker([stop.lat, stop.lon], {{
+            const marker = L.circleMarker([stop.lat, stop.lon], {{
               radius: isSelected ? 9 : 6,
               color: 'white',
               weight: 2,
               fillColor: isSelected ? '#111827' : route.color,
               fillOpacity: 1
-            }}).addTo(map).bindPopup(`<b>${{stop.name}}</b><br>${{routeName}}`);
+            }}).addTo(map).bindPopup(`<b>${{displayStopName(stop.name)}}</b><br>${{routeName}}`);
+            stopMarkers.push(marker);
           }});
+
+          routeLayers[routeName] = {{
+            polyline,
+            stopMarkers,
+            bounds: L.latLngBounds(route.path),
+          }};
         }});
 
         const legend = L.control({{ position: 'bottomleft' }});
@@ -473,6 +520,32 @@ def render_live_dashboard(selected_stop: str) -> None:
           }};
         }});
 
+        function applyRouteFilter() {{
+          routeEntries.forEach(([routeName, route]) => {{
+            const isActive = !activeRoute || activeRoute === routeName;
+            const layers = routeLayers[routeName];
+            layers.polyline.setStyle({{
+              opacity: isActive ? 0.95 : 0,
+              weight: activeRoute === routeName ? 8 : 6,
+            }});
+            if (activeRoute === routeName) {{
+              layers.polyline.bringToFront();
+            }}
+            layers.stopMarkers.forEach((marker) => {{
+              marker.setStyle({{
+                opacity: isActive ? 1 : 0,
+                fillOpacity: isActive ? 1 : 0,
+              }});
+            }});
+          }});
+
+          shuttles.forEach((shuttle) => {{
+            const isActive = !activeRoute || activeRoute === shuttle.route;
+            shuttle.marker.setOpacity(isActive ? 1 : 0);
+            shuttle.boardingBadge.setOpacity(isActive && shuttle.dwell_seconds_remaining > 0 ? 1 : 0);
+          }});
+        }}
+
         function updateMarkerVisual(shuttle) {{
           const route = payload.routes[shuttle.route];
           const boarding = shuttle.dwell_seconds_remaining > 0;
@@ -490,13 +563,9 @@ def render_live_dashboard(selected_stop: str) -> None:
               iconSize: [90, 24],
               iconAnchor: [45, 34]
             }}));
+            shuttle.boardingBadge.setOpacity(!activeRoute || activeRoute === shuttle.route ? 1 : 0);
           }} else {{
-            shuttle.boardingBadge.setIcon(L.divIcon({{
-              className: '',
-              html: '',
-              iconSize: [1, 1],
-              iconAnchor: [0, 0]
-            }}));
+            shuttle.boardingBadge.setOpacity(0);
           }}
         }}
 
@@ -512,8 +581,8 @@ def render_live_dashboard(selected_stop: str) -> None:
           shuttle.marker.bindPopup(
             `<b>${{shuttle.label}}</b><br>` +
             `Route: ${{shuttle.route}}<br>` +
-            `Current stop: ${{shuttle.current_stop}}<br>` +
-            `Next stop: ${{shuttle.next_stop}}<br>` +
+            `Current stop: ${{displayStopName(shuttle.current_stop)}}<br>` +
+            `Next stop: ${{displayStopName(shuttle.next_stop)}}<br>` +
             `Status: ${{shuttle.dwell_seconds_remaining > 0 ? 'Boarding passengers' : 'In service'}}<br>` +
             `Capacity: ${{shuttle.capacity}} (${{shuttle.capacity_pct}}%)` +
             delayText + expressText
@@ -564,7 +633,6 @@ def render_live_dashboard(selected_stop: str) -> None:
             updateMarkerVisual(shuttle);
             refreshPopup(shuttle);
           }});
-          renderSidePanel();
           requestAnimationFrame(animate);
         }}
 
@@ -588,24 +656,43 @@ def render_live_dashboard(selected_stop: str) -> None:
         }}
 
         function renderSidePanel() {{
-          const primaryRoute = payload.routes[Object.keys(payload.routes)[0]];
-          stopTitle.textContent = payload.selected_stop;
+          const displayRouteName = activeRoute || Object.keys(payload.routes)[0];
+          const primaryRoute = payload.routes[displayRouteName];
+          stopTitle.textContent = displayStopName(payload.selected_stop);
           serviceMeta.textContent = `${{primaryRoute.service_days}} service: ${{primaryRoute.service_window}} (${{primaryRoute.headway}})`;
           const routeHtml = Object.entries(payload.routes).map(([routeName, route]) => {{
+            const isActive = activeRoute === routeName;
             return `<div style="margin-bottom:12px;">
-              <div class="route-chip" style="background:${{route.color}};">${{routeName}}</div>
-              <div class="body">Stops on route: ${{route.ordered_stop_names.length}}</div>
-              <div class="body">${{route.service_days}} • ${{route.headway}}</div>
+              <button class="route-filter ${{isActive ? 'active' : ''}}" data-route="${{routeName}}">
+                <div class="route-chip" style="background:${{route.color}};">${{routeName}}</div>
+                <div class="body">Stops on route: ${{route.ordered_stop_names.length}}</div>
+                <div class="body">${{route.service_days}} • ${{route.headway}}</div>
+              </button>
             </div>`;
           }}).join('');
           routeInfo.innerHTML = routeHtml;
         }}
+
+        routeInfo.addEventListener('click', (event) => {{
+          const button = event.target.closest('.route-filter');
+          if (!button) return;
+          const routeName = button.dataset.route;
+          activeRoute = activeRoute === routeName ? null : routeName;
+          if (activeRoute) {{
+            map.fitBounds(routeLayers[activeRoute].bounds, {{ padding: [24, 24] }});
+          }} else {{
+            map.setView([payload.selected_coords.lat, payload.selected_coords.lon], 14);
+          }}
+          renderSidePanel();
+          applyRouteFilter();
+        }});
 
         shuttles.forEach((shuttle) => {{
           updateMarkerVisual(shuttle);
           refreshPopup(shuttle);
         }});
         renderSidePanel();
+        applyRouteFilter();
         requestAnimationFrame(animate);
       </script>
     </body>
@@ -617,12 +704,51 @@ def render_live_dashboard(selected_stop: str) -> None:
 def display_sidebar() -> str:
     with st.sidebar:
         st.header("📍 Your Stop")
+        route_filter_options = ["All routes", *st.session_state.route_definitions.keys()]
+        selected_route_filter = st.selectbox(
+            "Filter stops by route:",
+            route_filter_options,
+            index=route_filter_options.index(st.session_state.selected_route_filter)
+            if st.session_state.selected_route_filter in route_filter_options
+            else 0,
+        )
+        if selected_route_filter != st.session_state.selected_route_filter:
+            st.session_state.selected_route_filter = selected_route_filter
+            if (
+                selected_route_filter != "All routes"
+                and selected_route_filter not in st.session_state.stops[st.session_state.user_stop]["routes"]
+            ):
+                filtered_stops = [
+                    stop_name
+                    for stop_name, stop_data in st.session_state.stops.items()
+                    if selected_route_filter in stop_data["routes"]
+                ]
+                if filtered_stops:
+                    st.session_state.user_stop = sorted(filtered_stops)[0]
+            st.rerun()
+
+        if selected_route_filter == "All routes":
+            stop_options = sorted(st.session_state.stops.keys())
+        else:
+            stop_options = sorted(
+                stop_name
+                for stop_name, stop_data in st.session_state.stops.items()
+                if selected_route_filter in stop_data["routes"]
+            )
+
+        if st.session_state.user_stop not in stop_options and stop_options:
+            st.session_state.user_stop = stop_options[0]
+
         selected_stop = st.selectbox(
             "Select your stop:",
-            sorted(st.session_state.stops.keys()),
-            index=sorted(st.session_state.stops.keys()).index(st.session_state.user_stop),
+            stop_options,
+            index=stop_options.index(st.session_state.user_stop),
+            format_func=_stop_option_label,
         )
         if selected_stop != st.session_state.user_stop:
+            selected_stop_routes = st.session_state.stops[selected_stop]["routes"]
+            if len(selected_stop_routes) == 1:
+                st.session_state.selected_route_filter = selected_stop_routes[0]
             st.session_state.user_stop = selected_stop
             st.rerun()
 
@@ -691,7 +817,7 @@ def display_main_app() -> None:
     with st.expander("🛠️ How This Live Map Works"):
         st.markdown(
             """
-            1. Each shuttle is assigned to the Commonwealth route loop.
+            1. Each shuttle is assigned to a BC route loop.
             2. The map and right-side info panel run from the same browser-side animation state.
             3. Every shuttle pauses at each stop for a dwell period to simulate boarding.
             4. The schedule section below the map lists the next shuttle and following predicted arrivals for the selected stop.
