@@ -370,6 +370,9 @@ def initialize_simulation_state() -> None:
                 "on_time": shuttle.get("on_time"),
                 "progress": shuttle.get("progress"),
                 "dwell_seconds_remaining": shuttle.get("dwell_seconds_remaining", 0.0),
+                "delay_minutes": shuttle.get("delay_minutes", 0),
+                "is_express": shuttle.get("is_express", False),
+                "speed_mph": shuttle.get("speed_mph"),
             }
 
     shuttle_data = {}
@@ -384,6 +387,9 @@ def initialize_simulation_state() -> None:
                 "dwell_seconds_remaining",
                 shuttle.get("dwell_seconds_remaining", 0.0),
             ),
+            "delay_minutes": prior.get("delay_minutes", 0),
+            "is_express": prior.get("is_express", False),
+            "speed_mph": prior.get("speed_mph", shuttle["speed_mph"]),
         }
         lat, lon = _position_at_progress(seed["route"], seed["progress"])
         shuttle_data[shuttle_id] = {
@@ -511,7 +517,9 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
             continue
         route_length = st.session_state.route_definitions[shuttle["route"]]["metrics"]["total_length"]
         remaining_miles = progress_delta * route_length
-        eta_minutes = max(1, round((remaining_miles / max(shuttle["speed_mph"], 1)) * 60))
+        base_eta = round((remaining_miles / max(shuttle["speed_mph"], 1)) * 60)
+        delay = shuttle.get("delay_minutes", 0)
+        eta_minutes = max(1, base_eta + delay)
         arrivals.append(
             {
                 "shuttle_id": shuttle_id,
@@ -527,6 +535,8 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
                 "lat": shuttle["lat"],
                 "lon": shuttle["lon"],
                 "speed_mph": shuttle["speed_mph"],
+                "delay_minutes": delay,
+                "is_express": shuttle.get("is_express", False),
             }
         )
 

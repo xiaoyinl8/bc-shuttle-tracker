@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do python3:*)",
+      "Bash(echo \"OK: $f\")",
+      "Bash(echo \"ERROR: $f\")",
+      "Bash(done)",
+      "Bash(python3 -m py_compile /Users/xiaoyin/Desktop/bc-shuttle-tracker-main/map_page.py)"
+    ]
+  }
+}
