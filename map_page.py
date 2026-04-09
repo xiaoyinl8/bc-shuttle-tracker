@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="BC Shuttle Tracker",
     page_icon="🚌",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 apply_shared_styles()
@@ -701,129 +701,596 @@ def render_live_dashboard(selected_stop: str) -> None:
     components.html(html, height=640)
 
 
-def display_sidebar() -> str:
-    with st.sidebar:
-        st.header("📍 Your Stop")
-        route_filter_options = ["All routes", *st.session_state.route_definitions.keys()]
-        selected_route_filter = st.selectbox(
-            "Filter stops by route:",
-            route_filter_options,
-            index=route_filter_options.index(st.session_state.selected_route_filter)
-            if st.session_state.selected_route_filter in route_filter_options
-            else 0,
+_AI_SYSTEM_PROMPT = (
+    "You are the BC Shuttle Tracker AI assistant for Boston College. "
+    "Help students and staff with real-time shuttle information. "
+    "You have access to live shuttle data injected below. Always use that data when answering. "
+    "Capabilities: answer questions about next arrivals, ETAs, capacity, and delays; "
+    "accept delay reports from users and update the system; summarize the shuttle schedule. "
+    "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
+    "When a user reports or clears a delay, append at the very end of your reply EXACTLY: "
+    "DELAY_UPDATE:{shuttle_id:SHUTTLE_ID,delay_minutes:NUMBER} "
+    "Use delay_minutes 0 to clear. Only include this when the user explicitly reports or clears a delay. "
+    "Be friendly, concise, and accurate."
+)
+
+
+def render_split_app(selected_stop: str) -> None:  # noqa: PLR0915 (long but intentional)
+    TOTAL_H = 900   # iframe height — JS applyHeight() adjusts to actual window.innerHeight
+    payload = build_map_payload(selected_stop)
+    # Inject data as JSON into a separate <script> block so the HTML template
+    # stays a plain (non-f-string) string and can never be corrupted by the data.
+    payload_json      = json.dumps(payload)
+    system_prompt_json = json.dumps(_AI_SYSTEM_PROMPT)
+    init_time         = json.dumps(st.session_state.simulation_last_updated.strftime("%I:%M:%S %p"))
+    stop_options = "".join(
+        '<option value="{v}"{sel}>{v}</option>'.format(
+            v=name,
+            sel=" selected" if name == selected_stop else "",
         )
-        if selected_route_filter != st.session_state.selected_route_filter:
-            st.session_state.selected_route_filter = selected_route_filter
-            if (
-                selected_route_filter != "All routes"
-                and selected_route_filter not in st.session_state.stops[st.session_state.user_stop]["routes"]
-            ):
-                filtered_stops = [
-                    stop_name
-                    for stop_name, stop_data in st.session_state.stops.items()
-                    if selected_route_filter in stop_data["routes"]
-                ]
-                if filtered_stops:
-                    st.session_state.user_stop = sorted(filtered_stops)[0]
-            st.rerun()
+        for name in sorted(st.session_state.stops.keys())
+    )
 
-        if selected_route_filter == "All routes":
-            stop_options = sorted(st.session_state.stops.keys())
-        else:
-            stop_options = sorted(
-                stop_name
-                for stop_name, stop_data in st.session_state.stops.items()
-                if selected_route_filter in stop_data["routes"]
-            )
+    # Data-only f-string — just numbers and pre-validated JSON blobs
+    data_script = (
+        f"<script>"
+        f"var TOTAL_H={TOTAL_H};"
+        f"var mapPayload={payload_json};"
+        f"var SYSTEM_PROMPT={system_prompt_json};"
+        f"var INIT_TIME={init_time};"
+        f"</script>"
+    )
 
-        if st.session_state.user_stop not in stop_options and stop_options:
-            st.session_state.user_stop = stop_options[0]
+    # HTML template — raw string so JS regex backslashes are safe.
+    html_template = r"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  * {box-sizing:border-box;margin:0;padding:0;}
+  html,body {height:100%;overflow:hidden;background:#0f172a;color:#f1f5f9;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+  #app {display:flex;width:100%;overflow:hidden;}
 
-        selected_stop = st.selectbox(
-            "Select your stop:",
-            stop_options,
-            index=stop_options.index(st.session_state.user_stop),
-            format_func=_stop_option_label,
-        )
-        if selected_stop != st.session_state.user_stop:
-            selected_stop_routes = st.session_state.stops[selected_stop]["routes"]
-            if len(selected_stop_routes) == 1:
-                st.session_state.selected_route_filter = selected_stop_routes[0]
-            st.session_state.user_stop = selected_stop
-            st.rerun()
+  /* AI panel */
+  #ai-panel {width:420px;min-width:260px;max-width:70%;
+    display:flex;flex-direction:column;background:#1e293b;border-right:1px solid #334155;overflow:hidden;}
+  #ai-header {padding:12px 14px 10px;border-bottom:1px solid #334155;flex-shrink:0;}
+  #ai-title  {font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:8px;}
+  #key-row   {display:flex;gap:6px;margin-bottom:7px;}
+  #api-key   {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+    padding:6px 10px;border-radius:6px;font-size:12px;outline:none;}
+  #api-key:focus {border-color:#3b82f6;}
+  #clear-btn {background:#374151;color:#9ca3af;border:none;padding:6px 10px;
+    border-radius:6px;cursor:pointer;font-size:13px;flex-shrink:0;}
+  #clear-btn:hover {background:#4b5563;color:#f1f5f9;}
+  #stop-row  {display:flex;align-items:center;gap:6px;}
+  #stop-lbl  {font-size:11px;color:#64748b;white-space:nowrap;}
+  #stop-sel  {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+    padding:4px 8px;border-radius:6px;font-size:12px;outline:none;}
+  #chat-box  {flex:1;min-height:0;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;}
+  #chat-box::-webkit-scrollbar {width:4px;}
+  #chat-box::-webkit-scrollbar-thumb {background:#334155;border-radius:2px;}
+  .msg-user  {align-self:flex-end;background:#1d4ed8;color:#fff;padding:8px 12px;
+    border-radius:14px 14px 3px 14px;max-width:88%;font-size:13px;line-height:1.5;word-wrap:break-word;}
+  .msg-ai    {align-self:flex-start;background:#1e3a5f;color:#e2e8f0;padding:8px 12px;
+    border-radius:14px 14px 14px 3px;max-width:88%;font-size:13px;line-height:1.5;word-wrap:break-word;}
+  .msg-err   {align-self:center;background:#7f1d1d;color:#fca5a5;padding:6px 10px;
+    border-radius:8px;font-size:12px;max-width:90%;}
+  .placeholder {color:#475569;font-size:12px;text-align:center;padding:20px 10px;line-height:1.9;}
+  .delay-ok  {display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
+    font-size:11px;font-weight:700;background:#d1fae5;color:#065f46;}
+  .delay-warn{display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
+    font-size:11px;font-weight:700;background:#fef3c7;color:#92400e;}
+  #thinking  {align-self:flex-start;background:#1e3a5f;padding:10px 14px;
+    border-radius:14px 14px 14px 3px;}
+  .dot       {display:inline-block;width:7px;height:7px;background:#94a3b8;border-radius:50%;
+    animation:blink 1.2s infinite;margin:0 2px;}
+  .dot:nth-child(2){animation-delay:.2s;} .dot:nth-child(3){animation-delay:.4s;}
+  @keyframes blink {0%,80%,100%{transform:scale(1);opacity:.5;}40%{transform:scale(1.3);opacity:1;}}
+  #input-row {padding:9px;border-top:1px solid #334155;display:flex;gap:6px;flex-shrink:0;}
+  #user-inp  {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+    padding:8px 12px;border-radius:8px;font-size:13px;outline:none;}
+  #user-inp:focus {border-color:#3b82f6;}
+  #send-btn  {background:#3b82f6;color:#fff;border:none;padding:8px 14px;border-radius:8px;
+    cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;}
+  #send-btn:hover {background:#2563eb;}
+  #send-btn:disabled {background:#374151;color:#6b7280;cursor:not-allowed;}
 
-        routes = st.session_state.stops[selected_stop]["routes"]
-        route_html = "".join(
-            f'<span class="mini-route-chip" style="background:{st.session_state.route_definitions[route]["color"]};">{route}</span>'
-            for route in routes
-        )
-        st.markdown("**Routes serving this stop**", unsafe_allow_html=True)
-        st.markdown(route_html, unsafe_allow_html=True)
+  /* Drag handle */
+  #drag-handle {width:6px;flex-shrink:0;background:#1e293b;cursor:col-resize;
+    display:flex;align-items:center;justify-content:center;
+    border-left:1px solid #334155;border-right:1px solid #334155;user-select:none;}
+  #drag-handle:hover,#drag-handle.dragging {background:#3b82f6;border-color:#3b82f6;}
+  #drag-handle::after {content:'⋮';color:#475569;font-size:12px;}
+  #drag-handle:hover::after,#drag-handle.dragging::after {color:#fff;}
 
-        primary_route = st.session_state.route_definitions[routes[0]]
-        st.caption(
-            f"{primary_route['service_days']} • {primary_route['service_window']} • {primary_route['headway']}"
-        )
+  /* Map panel */
+  #map-panel  {flex:1;display:flex;flex-direction:column;min-width:300px;overflow:hidden;}
+  #map-header {padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;
+    display:flex;align-items:center;gap:12px;flex-shrink:0;height:44px;}
+  #map-header h2 {font-size:15px;font-weight:700;color:#f1f5f9;}
+  #map-header span {font-size:11px;color:#64748b;}
+  #map-body   {display:grid;grid-template-columns:1fr 200px;overflow:hidden;}
+  #map        {width:100%;}
+  #route-side {background:#fff;overflow-y:auto;padding:12px;
+    font-family:sans-serif;font-size:12px;color:#111;}
+  #route-side h3 {font-size:12px;margin:8px 0 4px;color:#1f2937;}
+  .card       {background:#f4f6fb;border-radius:8px;padding:9px 11px;margin-bottom:9px;
+    border-left:4px solid #cbd5e1;}
+  .card .title{font-weight:700;font-size:12px;color:#111827;}
+  .card .body {color:#4b5563;margin-top:3px;font-size:11px;line-height:1.4;}
+  .route-chip {display:inline-block;color:#fff;border-radius:999px;padding:3px 8px;
+    font-size:11px;font-weight:700;margin-right:4px;margin-top:4px;}
+  .legend     {background:#fff;padding:7px 9px;border-radius:7px;
+    box-shadow:0 3px 10px rgba(0,0,0,.15);font-size:11px;line-height:1.5;}
+  .legend-dot {display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+  .bus-marker {width:32px;height:32px;border-radius:50%;border:3px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;
+    justify-content:center;font-size:16px;}
+  .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);}
+  .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
+    padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
+</style>
+</head>
+<body>
+<div id="app">
 
-        st.divider()
-        st.markdown("### 🔄 Recent Updates")
-        if st.session_state.recent_updates:
-            for update in st.session_state.recent_updates[-4:]:
-                st.info(f"🕐 {update['time']}\n{update['message']}")
-        else:
-            st.caption("No recent updates")
+  <div id="ai-panel">
+    <div id="ai-header">
+      <div id="ai-title">🤖 AI Shuttle Assistant</div>
+      <div id="key-row">
+        <input id="api-key" type="password" placeholder="OpenAI API key  sk-..." autocomplete="off"/>
+        <button id="clear-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
+      </div>
+      <div id="stop-row">
+        <span id="stop-lbl">Your stop:</span>
+        <select id="stop-sel" onchange="onStopChange(this.value)">STOP_OPTIONS_PLACEHOLDER</select>
+      </div>
+    </div>
+    <div id="chat-box">
+      <div class="placeholder">💡 Try asking:<br>
+        "When's the next shuttle to Conte Forum?"<br>
+        "Newton express is 10 minutes late."<br>
+        "How crowded is the Comm Ave shuttle?"
+      </div>
+    </div>
+    <div id="input-row">
+      <input id="user-inp" type="text" placeholder="Ask about shuttles or report a delay…"/>
+      <button id="send-btn">Send ➤</button>
+    </div>
+  </div>
 
-        if st.session_state.system_alerts:
-            st.divider()
-            st.markdown("### 🚨 Active Alerts")
-            for alert in st.session_state.system_alerts[-3:]:
-                st.warning(alert["message"])
+  <div id="drag-handle"></div>
 
-        st.divider()
-        st.info("This version uses simulated moving buses. Replace the simulator with real GPS feed data later for production.")
-        if st.button("🔄 Reset Onboarding"):
-            st.session_state.has_seen_onboarding = False
-            st.rerun()
+  <div id="map-panel">
+    <div id="map-header">
+      <h2>🗺️ Live Shuttle Map</h2>
+      <span id="map-ts"></span>
+    </div>
+    <div id="map-body">
+      <div id="map" style="width:100%;"></div>
+      <div id="route-side">
+        <h3>Your Stop</h3>
+        <div class="card">
+          <div class="title" id="stop-title"></div>
+          <div class="body"  id="service-meta"></div>
+        </div>
+        <h3>Routes</h3>
+        <div id="route-info"></div>
+      </div>
+    </div>
+  </div>
 
-    return selected_stop
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── helpers ──────────────────────────────────────────────────────────────────
+function nearestStopProgress(route, name) { return route.stop_progress[name]; }
+function nextStopName(route, progress, inclusive) {
+  inclusive = (inclusive === undefined) ? true : inclusive;
+  for (var i = 0; i < route.ordered_stop_names.length; i++) {
+    var name = route.ordered_stop_names[i];
+    if (inclusive) { if (route.stop_progress[name] >= progress - 1e-6) return name; }
+    else if (route.stop_progress[name] > progress + 1e-6) return name;
+  }
+  return route.ordered_stop_names[0];
+}
+function crossedStop(cur, nxt, sp) {
+  if (cur <= nxt) return sp > cur + 1e-6 && sp <= nxt + 1e-6;
+  return sp > cur + 1e-6 || sp <= nxt + 1e-6;
+}
+function positionAtProgress(route, progress) {
+  var target = ((progress % 1) + 1) % 1 * route.total_length;
+  for (var i = 0; i < route.segment_lengths.length; i++) {
+    if (target <= route.cumulative[i+1] || i === route.segment_lengths.length - 1) {
+      var ratio = route.segment_lengths[i] === 0 ? 0
+        : (target - route.cumulative[i]) / route.segment_lengths[i];
+      var s = route.path[i], e = route.path[i+1];
+      return [s[0]+(e[0]-s[0])*ratio, s[1]+(e[1]-s[1])*ratio];
+    }
+  }
+  return route.path[route.path.length-1];
+}
+function stopDwell(name) {
+  if (name.charAt(0)==='A'||name.charAt(0)==='G'||name.charAt(0)==='M') return 35;
+  if (name.charAt(0)==='D'||name.charAt(0)==='J') return 25;
+  return 18;
+}
+function arrivalsForStop(stopName) {
+  return (shuttles||[])
+    .filter(function(s){ return mapPayload.routes[s.route].stop_progress[stopName] !== undefined; })
+    .map(function(s) {
+      var route = mapPayload.routes[s.route];
+      var sp    = route.stop_progress[stopName];
+      var delta = (sp - s.progress + 1) % 1;
+      var miles = delta * route.total_length;
+      var eta   = Math.max(1, Math.round(miles / Math.max(s.speed_mph,1) * 60));
+      return {shuttle:s, etaMinutes: Math.max(1, eta + (s.delay_minutes||0))};
+    })
+    .sort(function(a,b){ return a.etaMinutes - b.etaMinutes; });
+}
+
+// ── fit everything to the actual window height ────────────────────────────────
+function applyHeight() {
+  var h = window.innerHeight;
+  var mapH = h - 44; // subtract map header
+  document.getElementById('app').style.height      = h + 'px';
+  document.getElementById('ai-panel').style.height = h + 'px';
+  document.getElementById('drag-handle').style.height = h + 'px';
+  document.getElementById('map-panel').style.height   = h + 'px';
+  document.getElementById('map-body').style.height    = mapH + 'px';
+  document.getElementById('map').style.height         = mapH + 'px';
+  document.getElementById('route-side').style.height  = mapH + 'px';
+  if (typeof leafletMap !== 'undefined' && leafletMap) {
+    leafletMap.invalidateSize();
+  }
+}
+applyHeight();
+window.addEventListener('resize', applyHeight);
+
+// ── drag handle ──────────────────────────────────────────────────────────────
+var handle  = document.getElementById('drag-handle');
+var aiPanel = document.getElementById('ai-panel');
+var dragging = false;
+handle.addEventListener('mousedown', function(e){ dragging=true; handle.classList.add('dragging'); e.preventDefault(); });
+document.addEventListener('mousemove', function(e){
+  if (!dragging) return;
+  var rect = document.getElementById('app').getBoundingClientRect();
+  var w = Math.max(260, Math.min(rect.width - 320, e.clientX - rect.left));
+  aiPanel.style.width = w + 'px';
+});
+document.addEventListener('mouseup', function(){ dragging=false; handle.classList.remove('dragging'); });
+
+// ── chat ─────────────────────────────────────────────────────────────────────
+var chatHistory = [];
+try { chatHistory = JSON.parse(sessionStorage.getItem('bc_chat') || '[]'); } catch(e){}
+
+function saveChatHistory() {
+  try { sessionStorage.setItem('bc_chat', JSON.stringify(chatHistory)); } catch(e){}
+}
+
+function appendMsg(role, html, badgeText, badgeOk) {
+  var box = document.getElementById('chat-box');
+  // remove placeholder
+  var ph = box.querySelector('.placeholder');
+  if (ph) ph.parentNode.removeChild(ph);
+  var div = document.createElement('div');
+  div.className = role === 'user' ? 'msg-user' : role === 'err' ? 'msg-err' : 'msg-ai';
+  div.innerHTML = html;
+  if (badgeText) {
+    var b = document.createElement('div');
+    b.className = badgeOk ? 'delay-ok' : 'delay-warn';
+    b.textContent = badgeText;
+    div.appendChild(b);
+  }
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function clearChat() {
+  chatHistory = [];
+  saveChatHistory();
+  var box = document.getElementById('chat-box');
+  box.innerHTML = '<div class="placeholder">💡 Try asking:<br>"When\'s the next shuttle to Conte Forum?"<br>"Newton express is 10 minutes late."</div>';
+}
+
+function onStopChange(name) {
+  selectedStop = name;
+  renderSidePanel();
+  var routes = Object.values(mapPayload.routes);
+  for (var i=0; i<routes.length; i++) {
+    var found = routes[i].stops.filter(function(s){ return s.name === name; });
+    if (found.length) { leafletMap.setView([found[0].lat, found[0].lon], 14); break; }
+  }
+}
+
+function buildContext() {
+  var time = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  var lines = ['Current time: '+time, '', '=== LIVE SHUTTLE STATUS ==='];
+  (shuttles||[]).forEach(function(s) {
+    var d  = s.delay_minutes||0;
+    var ds = d>0?' (+'+d+' min delay)':d<0?' (running early)':' (on time)';
+    var st = s.dwell_seconds_remaining>0
+      ? 'boarding at '+s.current_stop
+      : 'traveling from '+s.current_stop+' toward '+s.next_stop;
+    lines.push('- '+s.id+' ('+s.label+'), route: '+s.route+', status: '+st+', capacity: '+s.capacity_pct+'%'+ds);
+  });
+  lines.push('','=== ROUTE SCHEDULES ===');
+  Object.entries(mapPayload.routes).forEach(function(e){
+    lines.push('- '+e[0]+': '+e[1].service_days+', '+e[1].service_window+', '+e[1].headway);
+  });
+  lines.push('','=== UPCOMING ARRIVALS at '+selectedStop+' ===');
+  var arr = arrivalsForStop(selectedStop);
+  if (arr.length) {
+    arr.slice(0,4).forEach(function(a){
+      lines.push('  - '+a.shuttle.label+' ('+a.shuttle.route+'): '+a.etaMinutes+' min away, capacity '+a.shuttle.capacity_pct+'%');
+    });
+  } else { lines.push('  No arrivals found.'); }
+  return lines.join('\n');
+}
+
+function parseDelay(text) {
+  // pattern: DELAY_UPDATE:{shuttle_id:X,delay_minutes:N}
+  var m = text.match(/DELAY_UPDATE:\{shuttle_id:([^,]+),delay_minutes:(-?\d+)\}/);
+  if (!m) return {clean: text, shuttleId: null, mins: 0};
+  return {
+    clean: text.slice(0, m.index).trimEnd(),
+    shuttleId: m[1].trim(),
+    mins: parseInt(m[2], 10)
+  };
+}
+
+document.getElementById('send-btn').addEventListener('click', sendMessage);
+document.getElementById('user-inp').addEventListener('keydown', function(e){
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+async function sendMessage() {
+  var apiKey  = document.getElementById('api-key').value.trim();
+  var inputEl = document.getElementById('user-inp');
+  var sendBtn = document.getElementById('send-btn');
+  var userMsg = inputEl.value.trim();
+  if (!apiKey) { appendMsg('err', 'Please enter your OpenAI API key at the top.'); return; }
+  if (!userMsg) return;
+
+  inputEl.value = '';
+  sendBtn.disabled = true;
+
+  appendMsg('user', userMsg.replace(/</g,'&lt;'));
+  chatHistory.push({role:'user', content:userMsg});
+
+  var box = document.getElementById('chat-box');
+  var thinking = document.createElement('div');
+  thinking.id = 'thinking';
+  thinking.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+  box.appendChild(thinking); box.scrollTop = box.scrollHeight;
+
+  try {
+    var sysMsg = SYSTEM_PROMPT + '\n\n' + buildContext();
+    var messages = [{role:'system', content:sysMsg}];
+    chatHistory.slice(-10).forEach(function(m){ messages.push({role:m.role, content:m.content}); });
+
+    var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+      body: JSON.stringify({model:'gpt-4o-mini', messages:messages, temperature:0.3, max_tokens:600})
+    });
+    if (!resp.ok) {
+      var errData = {}; try { errData = await resp.json(); } catch(e){}
+      throw new Error((errData.error && errData.error.message) || resp.statusText);
+    }
+    var data    = await resp.json();
+    var raw     = data.choices[0].message.content;
+    var parsed  = parseDelay(raw);
+    var clean   = parsed.clean;
+    var badgeText = null, badgeOk = false;
+
+    if (parsed.shuttleId) {
+      var found = (shuttles||[]).filter(function(s){ return s.id === parsed.shuttleId; });
+      if (found.length) {
+        found[0].delay_minutes = parsed.mins;
+        badgeOk   = parsed.mins === 0;
+        badgeText = badgeOk
+          ? '✅ Delay cleared for ' + found[0].label
+          : '⚠️ Applied: ' + found[0].label + ' ' + (parsed.mins>0?'+':'') + parsed.mins + ' min';
+      }
+    }
+
+    if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+    appendMsg('ai', clean.replace(/\n/g,'<br>').replace(/</g,'&lt;').replace(/&lt;br>/g,'<br>'), badgeText, badgeOk);
+    chatHistory.push({role:'assistant', content:clean});
+    saveChatHistory();
+  } catch(e) {
+    if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+    appendMsg('err', 'Error: ' + e.message);
+  }
+  sendBtn.disabled = false;
+}
+
+// ── restore chat from sessionStorage ─────────────────────────────────────────
+(function restoreChat(){
+  if (!chatHistory.length) return;
+  var box = document.getElementById('chat-box');
+  box.innerHTML = '';
+  chatHistory.forEach(function(m){
+    var div = document.createElement('div');
+    div.className = m.role==='user' ? 'msg-user' : 'msg-ai';
+    div.innerHTML = m.content.replace(/\n/g,'<br>').replace(/</g,'&lt;').replace(/&lt;br>/g,'<br>');
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+})();
+
+// ── map ───────────────────────────────────────────────────────────────────────
+document.getElementById('map-ts').textContent = 'Initialized at ' + INIT_TIME + ' · buses update in real time';
+
+var selectedStop = mapPayload.selected_stop;
+var leafletMap;
+var shuttles;
+
+var routeEntries = Object.entries(mapPayload.routes);
+leafletMap = L.map('map', {zoomControl:false, attributionControl:true})
+  .setView([mapPayload.selected_coords.lat, mapPayload.selected_coords.lon], 14);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO'
+}).addTo(leafletMap);
+
+routeEntries.forEach(function(entry) {
+  var routeName = entry[0], route = entry[1];
+  L.polyline(route.path, {color:route.color, weight:6, opacity:0.9})
+   .addTo(leafletMap).bindTooltip(routeName);
+  route.stops.forEach(function(stop) {
+    var isSel = stop.name === mapPayload.selected_stop;
+    L.circleMarker([stop.lat, stop.lon], {
+      radius:isSel?9:6, color:'white', weight:2,
+      fillColor:isSel?'#111827':route.color, fillOpacity:1
+    }).addTo(leafletMap).bindPopup('<b>'+stop.name+'</b><br>'+routeName);
+  });
+});
+
+var legend = L.control({position:'bottomleft'});
+legend.onAdd = function() {
+  var div = L.DomUtil.create('div','legend');
+  div.innerHTML = '<b>Routes</b><br>' + routeEntries.map(function(e){
+    return '<div style="margin-top:5px;"><span class="legend-dot" style="background:'+e[1].color+'"></span>'+e[0]+'</div>';
+  }).join('');
+  return div;
+};
+legend.addTo(leafletMap);
+
+shuttles = mapPayload.shuttles.map(function(s) {
+  var route = mapPayload.routes[s.route];
+  var pos   = positionAtProgress(route, s.progress);
+  var marker = L.marker(pos, {
+    icon: L.divIcon({className:'', html:'<div class="bus-marker" style="background:'+route.color+';">🚌</div>',
+      iconSize:[32,32], iconAnchor:[16,16]})
+  }).addTo(leafletMap);
+  var badge = L.marker(pos, {
+    icon: L.divIcon({className:'', html:'', iconSize:[90,22], iconAnchor:[45,32]})
+  }).addTo(leafletMap);
+  marker.bindTooltip(s.label + ' · ' + s.route);
+  return Object.assign({}, s, {marker:marker, badge:badge, lastFrame:performance.now()});
+});
+
+function updateMarkerVisual(s) {
+  var route   = mapPayload.routes[s.route];
+  var boarding = s.dwell_seconds_remaining > 0;
+  s.marker.setIcon(L.divIcon({className:'',
+    html:'<div class="bus-marker'+(boarding?' boarding':'')+'" style="background:'+route.color+';">🚌</div>',
+    iconSize:[32,32], iconAnchor:[16,16]}));
+  s.badge.setIcon(L.divIcon({className:'',
+    html: boarding ? '<div class="boarding-pill">Boarding</div>' : '',
+    iconSize:[90,22], iconAnchor:[45,32]}));
+}
+
+function refreshPopup(s) {
+  var delay = s.delay_minutes > 0
+    ? '<br><span style="color:#dc2626;font-weight:700;">⚠️ +'+s.delay_minutes+' min late</span>'
+    : s.delay_minutes < 0
+      ? '<br><span style="color:#16a34a;font-weight:700;">⏰ '+Math.abs(s.delay_minutes)+' min early</span>' : '';
+  var expr = s.is_express ? '<br><span style="color:#7c3aed;font-weight:700;">🚀 Express</span>' : '';
+  s.marker.bindPopup('<b>'+s.label+'</b><br>Route: '+s.route+'<br>Stop: '+s.current_stop+
+    '<br>Next: '+s.next_stop+'<br>Capacity: '+s.capacity+' ('+s.capacity_pct+'%)'+delay+expr);
+}
+
+function updateShuttleState(s, dt) {
+  var route = mapPayload.routes[s.route];
+  if (s.dwell_seconds_remaining > 0) {
+    s.dwell_seconds_remaining = Math.max(0, s.dwell_seconds_remaining - dt);
+  } else {
+    var distFrac = (s.speed_mph * dt / 3600) / route.total_length;
+    var nextStop = nextStopName(route, s.progress, false);
+    var nsp      = nearestStopProgress(route, nextStop);
+    var proposed = (s.progress + distFrac) % 1;
+    if (crossedStop(s.progress, proposed, nsp)) {
+      s.progress = nsp; s.current_stop = nextStop;
+      s.next_stop = nextStop + ' (boarding)';
+      s.dwell_seconds_remaining = stopDwell(nextStop);
+    } else {
+      s.progress = proposed;
+      s.next_stop = nextStopName(route, s.progress, false);
+    }
+  }
+  var ordered  = route.ordered_stop_names;
+  var nextName = nextStopName(route, s.progress, s.dwell_seconds_remaining > 0);
+  var ni = ordered.indexOf(nextName);
+  var pi = ni > 0 ? ni-1 : ordered.length-1;
+  s.current_stop = ordered[pi];
+  if (s.dwell_seconds_remaining > 0) {
+    s.current_stop = nextName;
+    s.next_stop    = nextName + ' (boarding)';
+  } else {
+    s.next_stop = nextName;
+  }
+}
+
+function animate(now) {
+  shuttles.forEach(function(s) {
+    var dt = Math.min(1.5, (now - s.lastFrame) / 1000);
+    s.lastFrame = now;
+    updateShuttleState(s, dt);
+    var pos = positionAtProgress(mapPayload.routes[s.route], s.progress);
+    s.marker.setLatLng(pos);
+    s.badge.setLatLng(pos);
+    updateMarkerVisual(s);
+    refreshPopup(s);
+  });
+  renderSidePanel();
+  requestAnimationFrame(animate);
+}
+
+function renderSidePanel() {
+  var pr = mapPayload.routes[Object.keys(mapPayload.routes)[0]];
+  document.getElementById('stop-title').textContent = selectedStop;
+  document.getElementById('service-meta').textContent =
+    pr.service_days + ' · ' + pr.service_window + ' · ' + pr.headway;
+  document.getElementById('route-info').innerHTML = routeEntries.map(function(e){
+    var n=e[0],r=e[1];
+    return '<div style="margin-bottom:9px;">'
+      + '<span class="route-chip" style="background:'+r.color+';">'+n+'</span>'
+      + '<div class="body">'+r.ordered_stop_names.length+' stops · '+r.service_days+' · '+r.headway+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+shuttles.forEach(function(s){ updateMarkerVisual(s); refreshPopup(s); });
+renderSidePanel();
+applyHeight();
+setTimeout(applyHeight, 200);
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>"""
+
+    # Inject stop options into the template (heights are set by JS at runtime)
+    html = html_template.replace("STOP_OPTIONS_PLACEHOLDER", stop_options)
+    # Combine data script + template
+    full_html = data_script + html
+    # Use a large iframe height so the JS window.innerHeight is close to real viewport.
+    # The JS applyHeight() will correct any mismatch immediately.
+    components.html(full_html, height=TOTAL_H, scrolling=False)
 
 
 def display_main_app() -> None:
     update_shuttle_positions(advance=False)
 
-    st.title("🚌 BC Shuttle Tracker")
-    st.caption("Live shuttle map with route-aware arrival estimates and basic rider info")
+    # Hide Streamlit chrome so the split-pane fills the viewport
+    st.markdown("""
+    <style>
+    header[data-testid="stHeader"] { visibility:hidden; height:0; }
+    [data-testid="stSidebar"]       { display:none !important; }
+    [data-testid="collapsedControl"]{ display:none !important; }
+    .stMainBlockContainer { padding:0 !important; max-width:100% !important; }
+    .stMain > div:first-child { padding:0 !important; }
+    footer { display:none; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    selected_stop = display_sidebar()
-    if selected_stop != st.session_state.user_stop:
-        st.session_state.user_stop = selected_stop
-
-    metric1, metric2, metric3 = st.columns(3)
-    with metric1:
-        st.metric("Active Routes", len(st.session_state.route_definitions))
-    with metric2:
-        st.metric("Buses in Service", len(st.session_state.shuttle_data))
-    with metric3:
-        st.metric("Map Motion", "Continuous")
-
-    st.subheader("🗺️ Live Shuttle Map")
-    last_updated = st.session_state.simulation_last_updated.strftime("%I:%M:%S %p")
-    st.caption(f"Map initialized at {last_updated} • the main page focuses on live route tracking and essential trip info")
-    render_live_dashboard(st.session_state.user_stop)
-    st.caption("The side panel focuses on your selected stop and route coverage so it can scale cleanly as more routes are added.")
-    st.divider()
-    render_arrival_schedule(st.session_state.user_stop)
-
-    with st.expander("🛠️ How This Live Map Works"):
-        st.markdown(
-            """
-            1. Each shuttle is assigned to a BC route loop.
-            2. The map and right-side info panel run from the same browser-side animation state.
-            3. Every shuttle pauses at each stop for a dwell period to simulate boarding.
-            4. The schedule section below the map lists the next shuttle and following predicted arrivals for the selected stop.
-            5. Human-AI verification now lives on its own page so the feedback workflow stays separate from the live tracker.
-            """
-        )
+    render_split_app(st.session_state.user_stop)
 
 
 initialize_app_state()
