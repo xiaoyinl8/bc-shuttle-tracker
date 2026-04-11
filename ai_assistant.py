@@ -1,11 +1,13 @@
 """Shared AI assistant logic and rendering for BC Shuttle Tracker."""
 
 import json
+import os
 import re
 from datetime import datetime
 
 import streamlit as st
 from openai import OpenAI
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from shuttle_simulation import get_stop_arrivals, initialize_simulation_state
 
@@ -15,6 +17,14 @@ def _ensure_state() -> None:
         initialize_simulation_state()
     if "ai_chat_history" not in st.session_state:
         st.session_state.ai_chat_history = []
+
+
+def _get_configured_api_key() -> str:
+    try:
+        secret_key = st.secrets.get("OPENAI_API_KEY", "")
+    except StreamlitSecretNotFoundError:
+        secret_key = ""
+    return secret_key or os.getenv("OPENAI_API_KEY", "")
 
 
 def _get_shuttle_context() -> str:
@@ -166,24 +176,48 @@ def _process_ai_response(api_key: str) -> None:
     st.session_state.ai_chat_history.append(record)
 
 
+def ensure_ai_state() -> None:
+    _ensure_state()
+
+
+def get_configured_api_key() -> str:
+    return _get_configured_api_key()
+
+
+def process_embedded_ai_message(user_input: str) -> str | None:
+    """Process one AI message server-side for the embedded map assistant.
+
+    Returns an error string when processing fails, otherwise None.
+    """
+    _ensure_state()
+    api_key = _get_configured_api_key()
+    if not api_key:
+        return "Add OPENAI_API_KEY to .streamlit/secrets.toml to enable AI chat."
+
+    st.session_state.ai_chat_history.append({"role": "user", "content": user_input})
+    try:
+        _process_ai_response(api_key)
+    except Exception as exc:
+        st.session_state.ai_chat_history.pop()
+        return str(exc)
+    return None
+
+
 # ── Standalone full-page rendering (pages/AI_Assistant.py) ──────────────────
 
 def render_ai_assistant_page() -> None:
     _ensure_state()
+    api_key = _get_configured_api_key()
 
     st.title("🤖 AI Shuttle Assistant")
     st.caption("Ask about arrivals, capacity, or report a delay — the AI reads live shuttle data automatically.")
 
     with st.sidebar:
-        st.header("🔑 OpenAI API Key")
-        api_key = st.text_input(
-            "Enter your OpenAI API key",
-            type="password",
-            key="openai_api_key",
-            placeholder="sk-...",
-            help="Stored only in your browser session, never logged.",
-        )
-        st.caption("Key is stored only in this session.")
+        st.header("AI Configuration")
+        if api_key:
+            st.success("Server-side OpenAI key detected.")
+        else:
+            st.warning("No server-side OpenAI key found. Add OPENAI_API_KEY to .streamlit/secrets.toml.")
         st.divider()
 
         if st.button("🗑️ Clear Chat History"):
@@ -198,7 +232,7 @@ def render_ai_assistant_page() -> None:
         st.caption("Comm Ave 1 is back on time.")
 
     if not api_key:
-        st.info("Enter your OpenAI API key in the sidebar to start.")
+        st.info("Add OPENAI_API_KEY to .streamlit/secrets.toml to enable AI chat.")
         return
 
     for msg in st.session_state.ai_chat_history:
@@ -231,26 +265,59 @@ def render_ai_assistant_page() -> None:
 def render_ai_assistant_panel() -> None:
     """Render AI assistant as a compact panel for embedding inside a column."""
     _ensure_state()
+    api_key = _get_configured_api_key()
 
-    st.markdown("### 🤖 AI Assistant")
+    st.markdown(
+        """
+        <div style="
+            background:#1e293b;
+            border:1px solid #334155;
+            border-radius:18px;
+            padding:16px 16px 14px;
+            margin:10px 0 14px 0;
+            box-shadow:0 14px 30px rgba(15,23,42,.16);
+        ">
+          <div style="font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-0.01em;">
+            🤖 AI Shuttle Assistant
+          </div>
+          <div style="margin-top:6px;font-size:12px;line-height:1.45;color:#94a3b8;">
+            Ask about arrivals, delays, and crowding using the app's server-side OpenAI key.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    col_key, col_clear = st.columns([4, 1])
-    with col_key:
-        api_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            key="openai_api_key",
-            placeholder="sk-... (session only)",
-            label_visibility="collapsed",
-        )
+    col_status, col_clear = st.columns([6, 1])
+    with col_status:
+        if api_key:
+            st.caption("Using the app's server-side OpenAI key.")
+        else:
+            st.caption("Add OPENAI_API_KEY to `.streamlit/secrets.toml` to enable AI chat.")
     with col_clear:
         if st.button("🗑️", key="clear_chat_panel", help="Clear chat history"):
             st.session_state.ai_chat_history = []
             st.rerun()
 
+    stop_names = sorted(st.session_state.stops.keys())
+    current_stop = st.session_state.user_stop
+    embedded_stop = st.session_state.get("embedded_user_stop")
+    if embedded_stop not in stop_names or embedded_stop != current_stop:
+        st.session_state.embedded_user_stop = current_stop
+    st.caption("Your stop")
+    selected_stop = st.selectbox(
+        "Your stop",
+        stop_names,
+        key="embedded_user_stop",
+        label_visibility="collapsed",
+    )
+    if selected_stop != st.session_state.user_stop:
+        st.session_state.user_stop = selected_stop
+        st.rerun()
+
     if not api_key:
-        st.caption("Enter your OpenAI API key above to start chatting.")
         with st.container(height=380):
+            st.caption("Try asking")
             st.markdown("**💡 Try asking:**")
             st.caption("When's the next shuttle to Conte Forum?")
             st.caption("The Newton express is running 10 minutes late.")
@@ -260,7 +327,8 @@ def render_ai_assistant_panel() -> None:
         return
 
     # Scrollable chat history
-    chat_container = st.container(height=420)
+    st.caption("Conversation")
+    chat_container = st.container(height=520)
     with chat_container:
         if not st.session_state.ai_chat_history:
             st.caption("No messages yet — ask something below!")
