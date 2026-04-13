@@ -184,15 +184,15 @@ def get_configured_api_key() -> str:
     return _get_configured_api_key()
 
 
-def process_embedded_ai_message(user_input: str) -> str | None:
+def process_embedded_ai_message(user_input: str, user_api_key: str = "") -> str | None:
     """Process one AI message server-side for the embedded map assistant.
 
     Returns an error string when processing fails, otherwise None.
     """
     _ensure_state()
-    api_key = _get_configured_api_key()
+    api_key = user_api_key.strip() or _get_configured_api_key()
     if not api_key:
-        return "Add OPENAI_API_KEY to .streamlit/secrets.toml to enable AI chat."
+        return "Enter your OpenAI API key in the AI panel to enable chat."
 
     st.session_state.ai_chat_history.append({"role": "user", "content": user_input})
     try:

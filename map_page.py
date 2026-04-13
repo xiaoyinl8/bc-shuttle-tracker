@@ -1,12 +1,10 @@
 import json
-import os
 from urllib.parse import quote
 
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit.errors import StreamlitSecretNotFoundError
 
-from ai_assistant import ensure_ai_state, process_embedded_ai_message
+from ai_assistant import ensure_ai_state
 from interaction_ui import apply_shared_styles
 from shuttle_simulation import (
     build_eta_prediction,
@@ -31,50 +29,12 @@ def initialize_app_state() -> None:
     initialize_simulation_state()
 
 
-def _has_server_openai_api_key() -> bool:
-    try:
-        secret_key = st.secrets.get("OPENAI_API_KEY", "")
-    except StreamlitSecretNotFoundError:
-        secret_key = ""
-    env_key = os.getenv("OPENAI_API_KEY", "")
-    return bool(secret_key or env_key)
-
 
 def _sync_selected_stop_from_query() -> None:
     selected_from_query = st.query_params.get("selected_stop")
     if selected_from_query and selected_from_query in st.session_state.stops:
         st.session_state.user_stop = selected_from_query
 
-
-def _process_embedded_ai_query() -> None:
-    prompt = st.query_params.get("chat_prompt")
-    nonce = st.query_params.get("chat_nonce")
-    if not prompt or not nonce:
-        return
-
-    if st.query_params.get("selected_stop") in st.session_state.stops:
-        st.session_state.user_stop = st.query_params["selected_stop"]
-
-    if st.session_state.get("last_embedded_chat_nonce") == nonce:
-        return
-
-    ensure_ai_state()
-    error = process_embedded_ai_message(prompt)
-    st.session_state.last_embedded_chat_nonce = nonce
-    if error:
-        st.session_state.embedded_ai_error = error
-    else:
-        st.session_state.embedded_ai_error = ""
-
-    try:
-        del st.query_params["chat_prompt"]
-    except KeyError:
-        pass
-    try:
-        del st.query_params["chat_nonce"]
-    except KeyError:
-        pass
-    st.rerun()
 
 
 def show_onboarding() -> None:
@@ -773,7 +733,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     payload_json      = json.dumps(payload)
     system_prompt_json = json.dumps(_AI_SYSTEM_PROMPT)
     init_time         = json.dumps(st.session_state.simulation_last_updated.strftime("%I:%M:%S %p"))
-    ai_server_configured = json.dumps(_has_server_openai_api_key())
+    from ai_assistant import get_configured_api_key  # noqa: PLC0415
+    _resolved_api_key = get_configured_api_key()
+    ai_server_configured = json.dumps(bool(_resolved_api_key))
+    ai_api_key_json = json.dumps(_resolved_api_key)
     show_ai_panel_json = json.dumps(show_ai_panel)
     ai_chat_history_json = json.dumps(st.session_state.ai_chat_history)
     embedded_ai_error_json = json.dumps(st.session_state.get("embedded_ai_error", ""))
@@ -793,6 +756,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         f"var SYSTEM_PROMPT={system_prompt_json};"
         f"var INIT_TIME={init_time};"
         f"var AI_SERVER_CONFIGURED={ai_server_configured};"
+        f"var AI_API_KEY={ai_api_key_json};"
         f"var SHOW_AI_PANEL={show_ai_panel_json};"
         f"var AI_CHAT_HISTORY={ai_chat_history_json};"
         f"var EMBEDDED_AI_ERROR={embedded_ai_error_json};"
@@ -817,8 +781,12 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #ai-header {padding:12px 14px 10px;border-bottom:1px solid #334155;flex-shrink:0;}
   #ai-title  {font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:8px;}
   #key-row   {display:flex;gap:6px;margin-bottom:7px;}
-  #ai-config-note {font-size:11px;color:#94a3b8;line-height:1.45;padding:8px 10px;border-radius:10px;
-    background:#0f172a;border:1px solid #334155;}
+  #api-key-inp {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+    padding:7px 10px;border-radius:8px;font-size:12px;outline:none;}
+  #api-key-inp::placeholder {color:#475569;}
+  #api-key-inp:focus {border-color:#3b82f6;}
+  #server-key-note {flex:1;font-size:11px;color:#4ade80;padding:7px 10px;border-radius:8px;
+    background:#052e16;border:1px solid #166534;}
   #clear-btn {background:#374151;color:#9ca3af;border:none;padding:6px 10px;
     border-radius:6px;cursor:pointer;font-size:13px;flex-shrink:0;}
   #clear-btn:hover {background:#4b5563;color:#f1f5f9;}
@@ -927,7 +895,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     <div id="ai-header">
       <div id="ai-title">🤖 AI Shuttle Assistant</div>
       <div id="key-row">
-        <div id="ai-config-note">AI responses use a server-side OpenAI key configured by the app owner.</div>
+        <input id="api-key-inp" type="password" placeholder="Enter your OpenAI API key…"/>
         <button id="clear-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
       </div>
       <div id="stop-row">
@@ -1171,26 +1139,79 @@ document.getElementById('user-inp').addEventListener('keydown', function(e){
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
+// Show server-key badge or user key input depending on configuration
+(function() {
+  var keyRow = document.getElementById('key-row');
+  var keyInp = document.getElementById('api-key-inp');
+  if (AI_SERVER_CONFIGURED) {
+    keyRow.style.display = 'none';
+  } else {
+    // Restore user key from localStorage
+    var saved = localStorage.getItem('bc_shuttle_openai_key');
+    if (saved) keyInp.value = saved;
+    keyInp.addEventListener('input', function() {
+      localStorage.setItem('bc_shuttle_openai_key', this.value);
+    });
+  }
+})();
+
 async function sendMessage() {
   var inputEl = document.getElementById('user-inp');
   var sendBtn = document.getElementById('send-btn');
   var userMsg = inputEl.value.trim();
-  if (!AI_SERVER_CONFIGURED) {
-    appendMsg('err', 'AI chat is not configured yet. Add OPENAI_API_KEY to .streamlit/secrets.toml on the server.');
+  var apiKey = AI_API_KEY || (document.getElementById('api-key-inp').value || '').trim();
+  if (!apiKey) {
+    appendMsg('err', 'Enter your OpenAI API key above to enable AI chat.');
     return;
   }
   if (!userMsg) return;
 
+  inputEl.value = '';
+  sendBtn.disabled = true;
+  chatHistory.push({role: 'user', content: userMsg});
+  appendMsg('user', userMsg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>'));
+
+  var box = document.getElementById('chat-box');
+  var thinkEl = document.createElement('div');
+  thinkEl.id = 'thinking';
+  thinkEl.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+  box.appendChild(thinkEl);
+  box.scrollTop = box.scrollHeight;
+
   try {
-    var target = new URL(window.top ? window.top.location.href : window.location.href);
-    target.searchParams.set('selected_stop', selectedStop);
-    target.searchParams.set('chat_prompt', userMsg);
-    target.searchParams.set('chat_nonce', String(Date.now()));
-    window.top.location.assign(target.toString());
-  } catch (error) {
-    appendMsg('err', 'Could not submit chat message to the server-side assistant.');
-    console.warn('Failed to hand off embedded AI message to Streamlit', error);
+    var msgs = [{role:'system', content: SYSTEM_PROMPT + '\n\n' + buildContext()}];
+    chatHistory.slice(-10).forEach(function(m){ msgs.push({role:m.role, content:m.content}); });
+
+    var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey},
+      body: JSON.stringify({model:'gpt-4o-mini', messages:msgs, temperature:0.3, max_tokens:600})
+    });
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    var raw = data.choices[0].message.content;
+    var parsed = parseDelay(raw);
+    var clean = parsed.clean || raw;
+    chatHistory.push({role:'assistant', content:clean});
+
+    if (thinkEl.parentNode) thinkEl.parentNode.removeChild(thinkEl);
+
+    var badgeText = null, badgeOk = false;
+    if (parsed.shuttleId) {
+      (shuttles||[]).forEach(function(s){
+        if (s.id === parsed.shuttleId) { s.delay_minutes = parsed.mins; s.on_time = parsed.mins === 0; }
+      });
+      badgeText = parsed.mins === 0 ? '✅ Delay cleared' : '⚠️ +'+ parsed.mins +' min delay applied';
+      badgeOk = parsed.mins === 0;
+    }
+    appendMsg('ai', clean.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>'), badgeText, badgeOk);
+  } catch(err) {
+    if (thinkEl.parentNode) thinkEl.parentNode.removeChild(thinkEl);
+    chatHistory.pop();
+    appendMsg('err', 'AI error: ' + err.message);
   }
+  sendBtn.disabled = false;
 }
 
 // ── restore chat from sessionStorage ─────────────────────────────────────────
@@ -1462,7 +1483,6 @@ requestAnimationFrame(animate);
 
 def display_main_app() -> None:
     _sync_selected_stop_from_query()
-    _process_embedded_ai_query()
     update_shuttle_positions(advance=False)
 
     # Hide Streamlit chrome so the split-pane fills the viewport
