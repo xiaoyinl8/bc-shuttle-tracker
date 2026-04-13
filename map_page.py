@@ -822,6 +822,67 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0;}
   #send-btn:hover {background:#2563eb;}
   #send-btn:disabled {background:#374151;color:#6b7280;cursor:not-allowed;}
+  #upload-btn {background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:8px 10px;
+    border-radius:8px;cursor:pointer;font-size:15px;flex-shrink:0;line-height:1;}
+  #upload-btn:hover {background:#334155;color:#f1f5f9;}
+  #upload-btn:disabled {opacity:.4;cursor:not-allowed;}
+  #schedule-badge {margin:0 9px 6px;padding:6px 10px;border-radius:8px;background:#0c2340;
+    border:1px solid #1e40af;font-size:11px;color:#93c5fd;display:flex;align-items:center;gap:6px;}
+  #schedule-badge .rm {cursor:pointer;color:#64748b;font-size:13px;margin-left:auto;}
+  #schedule-badge .rm:hover {color:#f87171;}
+  #theme-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
+    padding:4px 8px;border-radius:6px;color:#94a3b8;flex-shrink:0;margin-left:auto;line-height:1;}
+  #theme-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
+
+  /* ── Light mode overrides ─────────────────────────────────────────────── */
+  body.light-mode {background:#f1f5f9;color:#0f172a;}
+  body.light-mode #ai-panel {background:#ffffff;border-right-color:#cbd5e1;}
+  body.light-mode #ai-header {border-bottom-color:#cbd5e1;}
+  body.light-mode #ai-title {color:#0f172a;}
+  body.light-mode #api-key-inp {background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
+  body.light-mode #api-key-inp::placeholder {color:#94a3b8;}
+  body.light-mode #server-key-note {background:#dcfce7;border-color:#16a34a;color:#15803d;}
+  body.light-mode #clear-btn {background:#e2e8f0;color:#475569;}
+  body.light-mode #clear-btn:hover {background:#cbd5e1;color:#0f172a;}
+  body.light-mode #stop-lbl {color:#64748b;}
+  body.light-mode #stop-sel {background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
+  body.light-mode #chat-box::-webkit-scrollbar-thumb {background:#cbd5e1;}
+  body.light-mode .msg-ai {background:#dbeafe;color:#1e3a5f;}
+  body.light-mode .placeholder {color:#94a3b8;}
+  body.light-mode #thinking {background:#dbeafe;}
+  body.light-mode .dot {background:#64748b;}
+  body.light-mode #input-row {border-top-color:#cbd5e1;}
+  body.light-mode #user-inp {background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
+  body.light-mode #user-inp::placeholder {color:#94a3b8;}
+  body.light-mode #send-btn:disabled {background:#e2e8f0;color:#94a3b8;}
+  body.light-mode #upload-btn {background:#f1f5f9;border-color:#cbd5e1;color:#64748b;}
+  body.light-mode #upload-btn:hover {background:#e2e8f0;color:#0f172a;}
+  body.light-mode #schedule-badge {background:#dbeafe;border-color:#3b82f6;color:#1e40af;}
+  body.light-mode #theme-btn {border-color:#cbd5e1;color:#64748b;}
+  body.light-mode #theme-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
+  body.light-mode #drag-handle {background:#e2e8f0;border-color:#cbd5e1;}
+  body.light-mode #drag-handle:hover,body.light-mode #drag-handle.dragging {background:#3b82f6;border-color:#3b82f6;}
+  body.light-mode #drag-handle::after {color:#94a3b8;}
+  body.light-mode #map-header {background:#ffffff;border-bottom-color:#cbd5e1;}
+  body.light-mode #map-header h2 {color:#0f172a;}
+  body.light-mode #map-header span {color:#64748b;}
+  body.light-mode #route-side {background:#f8fafc;color:#0f172a;border-left-color:#cbd5e1;}
+  body.light-mode #route-side h3 {color:#0f172a;}
+  body.light-mode .card {background:#ffffff;border-left-color:#cbd5e1;}
+  body.light-mode .card .title {color:#0f172a;}
+  body.light-mode .card .body {color:#475569;}
+  body.light-mode .stop-metric-value {color:#0f172a;}
+  body.light-mode .stop-metric-label {color:#64748b;}
+  body.light-mode .stop-metric-detail {color:#475569;}
+  body.light-mode .stop-capacity-badge {background:#dbeafe;color:#1d4ed8;}
+  body.light-mode .stop-inline-route {color:#1d4ed8;}
+  body.light-mode .route-filter {box-shadow:0 2px 8px rgba(0,0,0,.08);}
+  body.light-mode .route-filter:hover {box-shadow:0 8px 20px rgba(0,0,0,.12);}
+  body.light-mode .route-filter.active {background:#dbeafe;}
+  body.light-mode .route-filter .route-title {color:#64748b;}
+  body.light-mode .route-filter .route-stops {color:#1e293b;}
+  body.light-mode .route-filter .route-action {color:#2563eb;}
+  body.light-mode .route-filter.active .route-action {color:#1d4ed8;}
 
   /* Drag handle */
   #drag-handle {width:6px;flex-shrink:0;background:#1e293b;cursor:col-resize;
@@ -839,45 +900,45 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #map-header span {font-size:11px;color:#64748b;}
   #map-body   {display:grid;grid-template-columns:1fr 240px;overflow:hidden;}
   #map        {width:100%;}
-  #route-side {background:#fff;overflow-y:auto;padding:12px;
-    font-family:sans-serif;font-size:12px;color:#111;}
-  #route-side h3 {font-size:14px;margin:8px 0 6px;color:#1f2937;font-weight:800;letter-spacing:-.01em;}
-  .card       {background:linear-gradient(180deg,#f7f9ff 0%,#eef2ff 100%);border-radius:18px;padding:14px 14px 13px;margin-bottom:12px;
-    border-left:4px solid #cbd5e1;}
-  .card .title{font-weight:700;font-size:12px;color:#111827;}
-  .card .body {color:#4b5563;margin-top:3px;font-size:11px;line-height:1.4;}
+  #route-side {background:#1e293b;overflow-y:auto;padding:12px;
+    font-family:sans-serif;font-size:12px;color:#f1f5f9;border-left:1px solid #334155;}
+  #route-side h3 {font-size:14px;margin:8px 0 6px;color:#f1f5f9;font-weight:800;letter-spacing:-.01em;}
+  .card       {background:#0f172a;border-radius:14px;padding:14px 14px 13px;margin-bottom:10px;
+    border-left:4px solid #334155;}
+  .card .title{font-weight:700;font-size:12px;color:#f1f5f9;}
+  .card .body {color:#94a3b8;margin-top:3px;font-size:11px;line-height:1.4;}
   .stop-card {padding:14px 14px 12px;}
   .stop-card .title {font-size:12px;font-weight:900;line-height:1.18;letter-spacing:-.02em;word-break:break-word;}
   .stop-routes {display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
   .stop-route-pill {display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;
     color:#fff;font-size:9px;font-weight:800;letter-spacing:.01em;max-width:100%;line-height:1.2;}
-  .stop-metric {margin-top:12px;padding-top:11px;border-top:1px solid rgba(148,163,184,.22);}
+  .stop-metric {margin-top:12px;padding-top:11px;border-top:1px solid rgba(148,163,184,.18);}
   .stop-metric-label {font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b;}
-  .stop-metric-value {margin-top:5px;font-size:18px;font-weight:900;color:#0f172a;line-height:1.02;letter-spacing:-.02em;}
-  .stop-metric-detail {margin-top:5px;color:#475569;font-size:10px;line-height:1.4;}
+  .stop-metric-value {margin-top:5px;font-size:18px;font-weight:900;color:#f1f5f9;line-height:1.02;letter-spacing:-.02em;}
+  .stop-metric-detail {margin-top:5px;color:#94a3b8;font-size:10px;line-height:1.4;}
   .stop-capacity-badge {display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;
-    background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;}
+    background:#1e3a5f;color:#93c5fd;font-size:10px;font-weight:800;}
   .capacity-people {display:flex;gap:5px;align-items:flex-end;margin-top:10px;margin-bottom:8px;flex-wrap:wrap;}
   .capacity-person {position:relative;width:8px;height:20px;opacity:.26;}
   .capacity-person.active {opacity:1;}
   .capacity-person::before {content:'';position:absolute;left:1px;top:0;width:6px;height:6px;border-radius:50%;background:currentColor;}
   .capacity-person::after {content:'';position:absolute;left:2px;top:7px;width:4px;height:11px;border-radius:3px;background:currentColor;box-shadow:-3px 2px 0 0 currentColor,3px 2px 0 0 currentColor,-2px 10px 0 0 currentColor,2px 10px 0 0 currentColor;}
-  .stop-inline-route {font-weight:800;color:#1e40af;}
+  .stop-inline-route {font-weight:800;color:#93c5fd;}
   .route-chip {display:inline-flex;align-items:center;gap:6px;color:#fff;border-radius:999px;padding:8px 14px;
     font-size:11px;font-weight:800;letter-spacing:.01em;margin-top:2px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.18);}
   .route-top {min-width:0;}
   .route-chip {max-width:100%;white-space:nowrap;}
   .route-filter {width:100%;text-align:left;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-    border-left-width:4px;border-left-style:solid;border-top:none;border-right:none;border-bottom:none;box-shadow:0 8px 20px rgba(148,163,184,.14);}
-  .route-filter:hover {transform:translateY(-2px);box-shadow:0 14px 28px rgba(15,23,42,.14);}
-  .route-filter:focus-visible {outline:none;box-shadow:0 0 0 3px rgba(37,99,235,.22),0 14px 28px rgba(15,23,42,.14);}
-  .route-filter.active {background:linear-gradient(180deg,#eef4ff 0%,#dbeafe 100%);box-shadow:0 0 0 2px rgba(29,78,216,.16),0 14px 28px rgba(59,130,246,.18);}
+    border-left-width:4px;border-left-style:solid;border-top:none;border-right:none;border-bottom:none;box-shadow:0 4px 12px rgba(0,0,0,.3);}
+  .route-filter:hover {transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,0,0,.4);}
+  .route-filter:focus-visible {outline:none;box-shadow:0 0 0 3px rgba(59,130,246,.4);}
+  .route-filter.active {background:#1e3a5f;box-shadow:0 0 0 2px rgba(59,130,246,.4);}
   .route-filter .route-top {display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
-  .route-filter .route-title {font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#64748b;}
-  .route-filter .route-stops {margin-top:10px;font-size:13px;font-weight:700;color:#334155;line-height:1.45;}
-  .route-filter .route-action {margin-top:10px;font-size:11px;font-weight:700;color:#1d4ed8;display:flex;align-items:center;gap:6px;}
-  .route-filter.active .route-action {color:#1e40af;}
-  .legend     {background:#fff;padding:7px 9px;border-radius:7px;
+  .route-filter .route-title {font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;}
+  .route-filter .route-stops {margin-top:10px;font-size:13px;font-weight:700;color:#e2e8f0;line-height:1.45;}
+  .route-filter .route-action {margin-top:10px;font-size:11px;font-weight:700;color:#60a5fa;display:flex;align-items:center;gap:6px;}
+  .route-filter.active .route-action {color:#93c5fd;}
+  .legend     {background:#fff;color:#111827;padding:7px 9px;border-radius:7px;
     box-shadow:0 3px 10px rgba(0,0,0,.15);font-size:11px;line-height:1.5;}
   .legend-dot {display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
   .bus-marker {width:32px;height:32px;border-radius:50%;border:3px solid #fff;
@@ -907,10 +968,18 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       <div class="placeholder">💡 Try asking:<br>
         "When's the next shuttle to Conte Forum?"<br>
         "Newton express is 10 minutes late."<br>
-        "How crowded is the Comm Ave shuttle?"
+        "How crowded is the Comm Ave shuttle?"<br><br>
+        📅 Upload your class schedule (bottom-left) and ask:<br>
+        "Which shuttle for my 9am Monday class?"
       </div>
     </div>
+    <input id="schedule-file" type="file" accept="image/*" style="display:none"/>
+    <div id="schedule-badge" style="display:none">
+      <span>📅</span><span id="schedule-label">Schedule loaded</span>
+      <span class="rm" onclick="clearSchedule()" title="Remove schedule">✕</span>
+    </div>
     <div id="input-row">
+      <button id="upload-btn" title="Upload class schedule image" onclick="document.getElementById('schedule-file').click()">📅</button>
       <input id="user-inp" type="text" placeholder="Ask about shuttles or report a delay…"/>
       <button id="send-btn">Send ➤</button>
     </div>
@@ -922,6 +991,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     <div id="map-header">
       <h2>🗺️ Live Shuttle Map</h2>
       <span id="map-ts"></span>
+      <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
     </div>
     <div id="map-body">
       <div id="map" style="width:100%;"></div>
@@ -1049,6 +1119,7 @@ document.addEventListener('mouseup', function(){ dragging=false; handle.classLis
 
 // ── chat ─────────────────────────────────────────────────────────────────────
 var chatHistory = Array.isArray(AI_CHAT_HISTORY) ? AI_CHAT_HISTORY.slice() : [];
+var userSchedule = null; // parsed schedule text extracted from uploaded image
 
 function appendMsg(role, html, badgeText, badgeOk) {
   var box = document.getElementById('chat-box');
@@ -1074,6 +1145,66 @@ function clearChat() {
   var box = document.getElementById('chat-box');
   box.innerHTML = '<div class="placeholder">💡 Try asking:<br>"When\'s the next shuttle to Conte Forum?"<br>"Newton express is 10 minutes late."</div>';
 }
+
+function clearSchedule() {
+  userSchedule = null;
+  document.getElementById('schedule-badge').style.display = 'none';
+  document.getElementById('schedule-file').value = '';
+}
+
+document.getElementById('schedule-file').addEventListener('change', async function() {
+  var file = this.files[0];
+  if (!file) return;
+  var apiKey = AI_API_KEY || (document.getElementById('api-key-inp').value || '').trim();
+  if (!apiKey) { appendMsg('err', 'Enter your OpenAI API key to use schedule upload.'); return; }
+
+  var uploadBtn = document.getElementById('upload-btn');
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = '⏳';
+
+  // Read file as base64
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    var base64 = e.target.result.split(',')[1];
+    var mimeType = file.type || 'image/jpeg';
+    try {
+      var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 800,
+          messages: [{
+            role: 'user',
+            content: [
+              {type:'image_url', image_url:{url:'data:'+mimeType+';base64,'+base64}},
+              {type:'text', text:
+                'Extract the class schedule from this image. List each class as: ' +
+                'Day(s), Time, Course name/number, Location. ' +
+                'Use plain text, one class per line. If something is unclear, make your best guess. ' +
+                'Only output the schedule, no extra commentary.'}
+            ]
+          }]
+        })
+      });
+      var data = await resp.json();
+      if (data.error) throw new Error(data.error.message);
+      userSchedule = data.choices[0].message.content.trim();
+      var label = file.name.length > 24 ? file.name.slice(0,22)+'…' : file.name;
+      document.getElementById('schedule-label').textContent = 'Schedule loaded: ' + label;
+      document.getElementById('schedule-badge').style.display = 'flex';
+      appendMsg('ai',
+        '📅 I\'ve read your schedule! Ask me things like:<br>' +
+        '"Which shuttle should I take to not be late for my 9am Monday class?"<br>' +
+        '"What\'s the best shuttle for my Tuesday afternoon classes?"');
+    } catch(err) {
+      appendMsg('err', 'Could not read schedule: ' + err.message);
+    }
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = '📅';
+  };
+  reader.readAsDataURL(file);
+});
 
 function updateSelectedStopMarkers() {
   Object.keys(stopMarkersByName).forEach(function(stopName) {
@@ -1120,6 +1251,9 @@ function buildContext() {
       lines.push('  - '+a.shuttle.label+' ('+a.shuttle.route+'): '+a.etaMinutes+' min away, capacity '+a.shuttle.capacity_pct+'%');
     });
   } else { lines.push('  No arrivals found.'); }
+  if (userSchedule) {
+    lines.push('', '=== USER\'S CLASS SCHEDULE ===', userSchedule);
+  }
   return lines.join('\n');
 }
 
@@ -1138,6 +1272,19 @@ document.getElementById('send-btn').addEventListener('click', sendMessage);
 document.getElementById('user-inp').addEventListener('keydown', function(e){
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
+
+// ── theme toggle ──────────────────────────────────────────────────────────────
+function toggleTheme() {
+  var light = document.body.classList.toggle('light-mode');
+  document.getElementById('theme-btn').textContent = light ? '🌙' : '☀️';
+  localStorage.setItem('bc_shuttle_theme', light ? 'light' : 'dark');
+}
+(function() {
+  if (localStorage.getItem('bc_shuttle_theme') === 'light') {
+    document.body.classList.add('light-mode');
+    document.getElementById('theme-btn').textContent = '🌙';
+  }
+})();
 
 // Show server-key badge or user key input depending on configuration
 (function() {
