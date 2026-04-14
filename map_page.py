@@ -725,7 +725,7 @@ _AI_SYSTEM_PROMPT = (
 
 
 def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  # noqa: PLR0915 (long but intentional)
-    TOTAL_H = 900   # iframe height — JS applyHeight() adjusts to actual window.innerHeight
+    TOTAL_H = 900   # iframe height attr; position:fixed CSS overrides this to 100vh at runtime
     payload = build_map_payload(selected_stop)
     ensure_ai_state()
     # Inject data as JSON into a separate <script> block so the HTML template
@@ -868,6 +868,36 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .profile-save:hover {background:#1d4ed8;}
   .profile-secondary {background:#eff6ff;color:#1d4ed8;}
   .profile-secondary:hover {background:#dbeafe;}
+  .profile-delete {background:#fee2e2;color:#dc2626;border:none;border-radius:10px;
+    padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;margin-right:auto;}
+  .profile-delete:hover {background:#fecaca;}
+  #profile-hint {margin:6px 9px 0;padding:10px 12px;border-radius:10px;background:#1e3a5f;
+    border:1px dashed #3b82f6;font-size:12px;color:#93c5fd;display:flex;align-items:center;
+    gap:8px;cursor:pointer;flex-shrink:0;}
+  #profile-hint:hover {background:#1e40af;}
+  #profile-hint .ph-icon {font-size:18px;flex-shrink:0;}
+  #profile-hint b {color:#e2e8f0;}
+  #upload-btn {background:#1e293b;border:1px solid #3b82f6;padding:7px 10px;
+    border-radius:8px;cursor:pointer;font-size:12px;flex-shrink:0;line-height:1;
+    color:#93c5fd;font-weight:700;display:flex;align-items:center;gap:4px;}
+  #upload-btn:hover {background:#1e40af;color:#fff;}
+  #upload-btn:disabled {opacity:.4;cursor:not-allowed;}
+  #toast {position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(14px);
+    padding:10px 22px;border-radius:999px;font-size:13px;font-weight:600;
+    background:#1e293b;color:#f1f5f9;border:1px solid #334155;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;pointer-events:none;
+    transition:opacity .2s ease,transform .2s ease;z-index:9999;white-space:nowrap;}
+  #toast.show {opacity:1;transform:translateX(-50%) translateY(0);}
+  #toast.t-success {background:#052e16;color:#4ade80;border-color:#166534;}
+  #toast.t-warn    {background:#431407;color:#fdba74;border-color:#9a3412;}
+  body.light-mode #toast {background:#ffffff;color:#0f172a;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12);}
+  body.light-mode #toast.t-success {background:#dcfce7;color:#15803d;border-color:#16a34a;}
+  body.light-mode #toast.t-warn    {background:#fef3c7;color:#92400e;border-color:#d97706;}
+  body.light-mode #profile-hint {background:#dbeafe;border-color:#3b82f6;color:#1e40af;}
+  body.light-mode #profile-hint:hover {background:#bfdbfe;}
+  body.light-mode #profile-hint b {color:#1e3a5f;}
+  body.light-mode #upload-btn {background:#eff6ff;border-color:#3b82f6;color:#1d4ed8;}
+  body.light-mode #upload-btn:hover {background:#dbeafe;color:#1e40af;}
   #theme-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
     padding:4px 8px;border-radius:6px;color:#94a3b8;flex-shrink:0;margin-left:auto;line-height:1;}
   #theme-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
@@ -927,6 +957,35 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode .route-filter .route-stops {color:#1e293b;}
   body.light-mode .route-filter .route-action {color:#2563eb;}
   body.light-mode .route-filter.active .route-action {color:#1d4ed8;}
+
+  /* ── You-are-here / geolocation ──────────────────────────────────────── */
+  .user-dot {width:16px;height:16px;border-radius:50%;background:#3b82f6;
+    border:2.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.3);
+    animation:pulse-loc 2s infinite;}
+  @keyframes pulse-loc {
+    0%   {box-shadow:0 0 0 0   rgba(59,130,246,.6), 0 2px 4px rgba(0,0,0,.3);}
+    70%  {box-shadow:0 0 0 10px rgba(59,130,246,0),  0 2px 4px rgba(0,0,0,.3);}
+    100% {box-shadow:0 0 0 0   rgba(59,130,246,0),   0 2px 4px rgba(0,0,0,.3);}
+  }
+  #loc-banner {display:none;align-items:center;gap:8px;padding:7px 14px;
+    background:#0c2340;border-bottom:1px solid #1d4ed8;font-size:12px;
+    color:#93c5fd;flex-shrink:0;}
+  #loc-banner b {color:#e2e8f0;}
+  .loc-dot {width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block;}
+  .loc-dist {margin-left:auto;color:#64748b;font-size:11px;white-space:nowrap;}
+  .loc-center-btn {margin-left:8px;background:#1d4ed8;color:#fff;border:none;padding:3px 9px;
+    border-radius:5px;cursor:pointer;font-size:11px;flex-shrink:0;font-weight:600;}
+  .loc-center-btn:hover {background:#2563eb;}
+  #locate-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
+    padding:4px 8px;border-radius:6px;color:#94a3b8;flex-shrink:0;line-height:1;}
+  #locate-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
+  #locate-btn.tracking {border-color:#3b82f6;color:#3b82f6;}
+  body.light-mode #loc-banner {background:#dbeafe;border-bottom-color:#93c5fd;color:#1e40af;}
+  body.light-mode #loc-banner b {color:#1e3a5f;}
+  body.light-mode .loc-dist {color:#94a3b8;}
+  body.light-mode #locate-btn {border-color:#cbd5e1;color:#64748b;}
+  body.light-mode #locate-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
+  body.light-mode #locate-btn.tracking {border-color:#3b82f6;color:#2563eb;}
 
   /* Drag handle */
   #drag-handle {width:6px;flex-shrink:0;background:#1e293b;cursor:col-resize;
@@ -991,6 +1050,13 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);}
   .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
     padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
+  /* Location-based recommendation card */
+  .loc-rec-best {background:#0a1f38 !important;}
+  .loc-rec-badge {font-size:10px;font-weight:800;color:#60a5fa;margin-bottom:5px;letter-spacing:.04em;}
+  .loc-rec-eta {font-size:22px;font-weight:900;color:#f1f5f9;line-height:1;}
+  body.light-mode .loc-rec-best {background:#dbeafe !important;}
+  body.light-mode .loc-rec-badge {color:#1d4ed8;}
+  body.light-mode .loc-rec-eta {color:#0f172a;}
 </style>
 </head>
 <body>
@@ -1008,12 +1074,16 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <select id="stop-sel" onchange="onStopChange(this.value)">STOP_OPTIONS_PLACEHOLDER</select>
       </div>
     </div>
+    <div id="profile-hint" onclick="openProfileModal()">
+      <span class="ph-icon">👤</span>
+      <span><b>Set up your Rider Profile</b> — personalized suggestions &amp; class schedule planning.</span>
+    </div>
     <div id="chat-box">
       <div class="placeholder">💡 Try asking:<br>
         "When's the next shuttle to Conte Forum?"<br>
         "Newton express is 10 minutes late."<br>
         "How crowded is the Comm Ave shuttle?"<br><br>
-        📅 Upload your class schedule (bottom-left) and ask:<br>
+        📅 Tap <b>👤 Profile</b> below to upload your class schedule and ask:<br>
         "Which shuttle for my 9am Monday class?"
       </div>
     </div>
@@ -1024,7 +1094,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       <span class="rm" onclick="clearSchedule()" title="Remove schedule">✕</span>
     </div>
     <div id="input-row">
-      <button id="upload-btn" title="Open rider profile" onclick="openProfileModal()">👤</button>
+      <button id="upload-btn" title="Open rider profile" onclick="openProfileModal()">👤 Profile</button>
       <input id="user-inp" type="text" placeholder="Ask about shuttles or report a delay…"/>
       <button id="send-btn">Send ➤</button>
     </div>
@@ -1040,11 +1110,15 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <span id="profile-avatar">BC</span>
         <span id="profile-name">Your profile</span>
       </button>
+      <button id="locate-btn" onclick="centerOnUser()" title="Show my location">📍</button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
     </div>
+    <div id="loc-banner"></div>
     <div id="map-body">
       <div id="map" style="width:100%;"></div>
       <div id="route-side">
+        <h3 id="loc-rec-title" style="display:none;">Near You</h3>
+        <div id="loc-rec" style="display:none;"></div>
         <h3>Your Stop</h3>
         <div class="card stop-card">
           <div class="title" id="stop-title"></div>
@@ -1122,12 +1196,14 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       </div>
 
       <div class="profile-actions">
+        <button class="profile-delete" onclick="deleteProfile()">🗑 Delete profile</button>
         <button class="profile-secondary" onclick="closeProfileModal()">Cancel</button>
         <button class="profile-save" onclick="saveProfile()">Save profile</button>
       </div>
     </div>
   </div>
 </div>
+<div id="toast"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -1204,7 +1280,9 @@ function capacityPeopleHtml(capacityPct) {
 // ── fit everything to the actual window height ────────────────────────────────
 function applyHeight() {
   var h = window.innerHeight;
-  var mapH = h - 44; // subtract map header
+  var bannerEl = document.getElementById('loc-banner');
+  var bannerH = (bannerEl && bannerEl.offsetHeight > 0) ? bannerEl.offsetHeight : 0;
+  var mapH = h - 44 - bannerH; // subtract map header + optional location banner
   document.getElementById('app').style.height      = h + 'px';
   document.getElementById('ai-panel').style.height = h + 'px';
   document.getElementById('drag-handle').style.height = h + 'px';
@@ -1457,6 +1535,12 @@ function syncProfileUi() {
   } else {
     scheduleStatus.textContent = 'No schedule uploaded yet.';
   }
+
+  // Hide the profile hint once a name is set or schedule is loaded
+  var hint = document.getElementById('profile-hint');
+  if (hint) {
+    hint.style.display = (userProfile.nickname || userSchedule) ? 'none' : 'flex';
+  }
 }
 
 function openProfileModal() {
@@ -1472,9 +1556,21 @@ function handleProfileBackdrop(event) {
   if (event.target.id === 'profile-modal-backdrop') closeProfileModal();
 }
 
+// ── toast notifications ───────────────────────────────────────────────────────
+var _toastTimer = null;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' t-' + type : '');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { el.className = ''; }, 3200);
+}
+
 function saveProfile() {
   var timingChoice = document.querySelector('input[name="timing-style"]:checked');
   var crowdChoice = document.querySelector('input[name="crowd-style"]:checked');
+  var isNew = !userProfile.nickname;
   userProfile.nickname = document.getElementById('profile-nickname').value.trim();
   userProfile.timing_style = timingChoice ? timingChoice.value : 'balanced';
   userProfile.crowd_style = crowdChoice ? crowdChoice.value : 'balanced';
@@ -1484,6 +1580,17 @@ function saveProfile() {
   syncProfileUi();
   renderSuggestedQuestions();
   closeProfileModal();
+  showToast(isNew ? '✅ Rider profile created' : '✅ Rider profile updated', 'success');
+}
+
+function deleteProfile() {
+  if (!confirm('Delete your rider profile? This cannot be undone.')) return;
+  userProfile = {timing_style:'balanced', crowd_style:'balanced', max_wait_minutes:10, preferred_route:'', nickname:''};
+  saveProfileToStorage();
+  syncProfileUi();
+  renderSuggestedQuestions();
+  closeProfileModal();
+  showToast('🗑️ Rider profile deleted', 'warn');
 }
 
 function profileSummaryLines() {
@@ -1505,6 +1612,10 @@ function profileSummaryLines() {
 function buildSuggestedQuestions() {
   var suggestions = [];
   var intro = personalizedIntro();
+  // Always surface a location-based suggestion when GPS is active
+  if (userLatLng) {
+    suggestions.push("Based on my current location, which shuttle should I take right now?");
+  }
   var maxWait = String(userProfile.max_wait_minutes || '10');
   var preferredRoute = preferredRouteText();
   var nextClass = nextScheduledClass();
@@ -1652,6 +1763,7 @@ function clearSchedule() {
   saveProfileToStorage();
   syncProfileUi();
   renderSuggestedQuestions();
+  showToast('🗑️ Class schedule removed', 'warn');
 }
 
 document.getElementById('schedule-file').addEventListener('change', async function() {
@@ -1703,8 +1815,10 @@ document.getElementById('schedule-file').addEventListener('change', async functi
       chatHistory.push({role:'assistant', content:'I have read your schedule.'});
       syncProfileUi();
       renderSuggestedQuestions();
+      showToast('📅 Class schedule added to your profile', 'success');
     } catch(err) {
       appendMsg('err', 'Could not read schedule: ' + err.message);
+      showToast('❌ Could not read schedule image', 'warn');
     }
     uploadBtn.disabled = false;
     uploadBtn.textContent = '👤';
@@ -1764,6 +1878,19 @@ function buildContext() {
   });
   if (userSchedule) {
     lines.push('', '=== USER\'S CLASS SCHEDULE ===', userSchedule);
+  }
+  if (userLatLng) {
+    lines.push('', '=== USER\'S CURRENT LOCATION ===');
+    lines.push('User has shared their GPS location. Nearby stops and next arrivals:');
+    nearestStopsToUser(userLatLng[0], userLatLng[1], 3).forEach(function(c) {
+      var distStr = c.dist < 1000 ? Math.round(c.dist) + 'm' : (c.dist/1000).toFixed(1) + 'km';
+      var walkMins = Math.max(1, Math.ceil(c.dist / 80));
+      lines.push('Stop: ' + c.stop.name + ' (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
+      arrivalsForStop(c.stop.name).slice(0, 2).forEach(function(a) {
+        lines.push('  → ' + a.shuttle.label + ' (' + a.shuttle.route + '): arrives in ' + a.etaMinutes + ' min, capacity ' + a.shuttle.capacity_pct + '%');
+      });
+    });
+    lines.push('When the user asks which shuttle to take, factor in walk time + ETA and capacity.');
   }
   return lines.join('\n');
 }
@@ -1948,6 +2075,147 @@ legend.onAdd = function() {
 };
 legend.addTo(leafletMap);
 
+// ── You-are-here / geolocation ────────────────────────────────────────────────
+var userLatLng = null;
+var userMarker = null;
+var userAccCircle = null;
+
+function haversineDist(lat1, lon1, lat2, lon2) {
+  var R = 6371000;
+  var p1 = lat1*Math.PI/180, p2 = lat2*Math.PI/180;
+  var dp = (lat2-lat1)*Math.PI/180, dl = (lon2-lon1)*Math.PI/180;
+  var a = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function nearestStopToUser(lat, lon) {
+  var best = null, bestDist = Infinity;
+  routeEntries.forEach(function(e) {
+    e[1].stops.forEach(function(stop) {
+      var d = haversineDist(lat, lon, stop.lat, stop.lon);
+      if (d < bestDist) { bestDist = d; best = {stop:stop, route:e[0], color:e[1].color, dist:d}; }
+    });
+  });
+  return best;
+}
+
+// Returns up to maxN closest unique stops (by name) with route info
+function nearestStopsToUser(lat, lon, maxN) {
+  var seen = {};
+  routeEntries.forEach(function(e) {
+    var routeName = e[0], route = e[1];
+    route.stops.forEach(function(stop) {
+      var d = haversineDist(lat, lon, stop.lat, stop.lon);
+      if (!seen[stop.name] || seen[stop.name].dist > d) {
+        seen[stop.name] = {stop: stop, route: routeName, color: route.color, dist: d};
+      }
+    });
+  });
+  return Object.values(seen)
+    .sort(function(a, b) { return a.dist - b.dist; })
+    .slice(0, maxN || 4);
+}
+
+function updateLocationRec() {
+  if (!userLatLng) return;
+  var lat = userLatLng[0], lon = userLatLng[1];
+  var candidates = nearestStopsToUser(lat, lon, 5);
+
+  // For each candidate stop, find the soonest arriving shuttle
+  var recs = [];
+  candidates.forEach(function(c) {
+    var arrivals = arrivalsForStop(c.stop.name);
+    if (arrivals.length) {
+      recs.push({stop: c.stop, route: c.route, color: c.color, dist: c.dist, best: arrivals[0]});
+    }
+  });
+  if (!recs.length) return;
+
+  // Sort by total time = walk time + ETA
+  recs.sort(function(a, b) {
+    var walkA = a.dist / 80, walkB = b.dist / 80; // 80 m/min walking
+    return (walkA + a.best.etaMinutes) - (walkB + b.best.etaMinutes);
+  });
+
+  var html = '';
+  recs.slice(0, 2).forEach(function(rec, i) {
+    var distStr = rec.dist < 1000 ? Math.round(rec.dist) + ' m' : (rec.dist/1000).toFixed(1) + ' km';
+    var walkMins = Math.max(1, Math.ceil(rec.dist / 80));
+    var isBest = i === 0;
+    html += '<div class="card' + (isBest ? ' loc-rec-best' : '') + '" style="border-left-color:' + rec.color + ';">';
+    if (isBest) html += '<div class="loc-rec-badge">⭐ RECOMMENDED</div>';
+    html += '<div class="title">' + escapeHtml(rec.stop.name) + '</div>';
+    html += '<div class="body">' + distStr + ' away · ~' + walkMins + ' min walk</div>';
+    html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:7px;">'
+      + '<span class="loc-rec-eta">' + rec.best.etaMinutes + ' min</span>'
+      + '<span style="font-size:10px;color:' + rec.color + ';font-weight:800;">' + escapeHtml(rec.best.shuttle.route) + '</span>'
+      + '</div>';
+    var capColor = rec.best.shuttle.capacity_pct >= 85 ? '#ef4444' : rec.best.shuttle.capacity_pct >= 60 ? '#f59e0b' : '#22c55e';
+    html += '<div class="body" style="margin-top:3px;">Capacity: <span style="color:' + capColor + ';font-weight:700;">'
+      + rec.best.shuttle.capacity_pct + '%</span> · ' + escapeHtml(rec.best.shuttle.label) + '</div>';
+    html += '<button onclick="sendMessage(\'Based on my current location, should I take the ' + rec.best.shuttle.route.replace(/'/g,"\\'") + ' from ' + rec.stop.name.replace(/'/g,"\\'") + '?\')" '
+      + 'style="margin-top:8px;width:100%;background:transparent;border:1px solid #334155;color:#93c5fd;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;" '
+      + 'onmouseover="this.style.background=\'#1e3a5f\'" onmouseout="this.style.background=\'transparent\'">Ask AI about this option ›</button>';
+    html += '</div>';
+  });
+
+  var recEl = document.getElementById('loc-rec');
+  var titleEl = document.getElementById('loc-rec-title');
+  recEl.innerHTML = html;
+  recEl.style.display = 'block';
+  titleEl.style.display = 'block';
+}
+
+function updateLocationBanner(lat, lon) {
+  var nearest = nearestStopToUser(lat, lon);
+  if (!nearest) return;
+  var banner = document.getElementById('loc-banner');
+  var d = nearest.dist;
+  var distStr = d < 1000 ? Math.round(d) + ' m' : (d/1000).toFixed(1) + ' km';
+  banner.innerHTML =
+    '<span class="loc-dot" style="background:'+nearest.color+'"></span>' +
+    '<span><b>You\'re near '+nearest.stop.name+'</b> &nbsp;·&nbsp; '+nearest.route+'</span>' +
+    '<span class="loc-dist">'+distStr+' away</span>' +
+    '<button class="loc-center-btn" onclick="centerOnUser()">Re-center</button>';
+  banner.style.display = 'flex';
+  applyHeight();
+}
+
+function centerOnUser() {
+  if (userLatLng) { leafletMap.setView(userLatLng, 16); }
+}
+
+function onLocationSuccess(pos) {
+  var lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+  userLatLng = [lat, lon];
+  document.getElementById('locate-btn').classList.add('tracking');
+  if (!userMarker) {
+    userMarker = L.marker([lat, lon], {
+      icon: L.divIcon({className:'', html:'<div class="user-dot"></div>', iconSize:[16,16], iconAnchor:[8,8]}),
+      zIndexOffset: 1000
+    }).addTo(leafletMap).bindTooltip('You are here', {direction:'top'});
+    userAccCircle = L.circle([lat, lon], {
+      radius: acc, color:'#3b82f6', fillColor:'#3b82f6', fillOpacity:0.08, weight:1
+    }).addTo(leafletMap);
+    // center map on user the first time
+    leafletMap.setView([lat, lon], 15);
+  } else {
+    userMarker.setLatLng([lat, lon]);
+    userAccCircle.setLatLng([lat, lon]).setRadius(acc);
+  }
+  updateLocationBanner(lat, lon);
+  updateLocationRec();
+}
+
+function onLocationError(err) {
+  console.warn('Geolocation unavailable:', err.message);
+}
+
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(onLocationSuccess, onLocationError,
+    {enableHighAccuracy:true, maximumAge:5000, timeout:12000});
+}
+
 shuttles = mapPayload.shuttles.map(function(s) {
   var route = mapPayload.routes[s.route];
   var pos   = positionAtProgress(route, s.progress);
@@ -2058,6 +2326,7 @@ function updateShuttleState(s, dt) {
   }
 }
 
+var _locRecFrame = 0;
 function animate(now) {
   shuttles.forEach(function(s) {
     var dt = Math.min(1.5, (now - s.lastFrame) / 1000);
@@ -2070,6 +2339,9 @@ function animate(now) {
     refreshPopup(s);
   });
   renderStopCard();
+  // Refresh location-based recommendations every ~3 s (≈180 frames at 60 fps)
+  _locRecFrame++;
+  if (_locRecFrame % 180 === 0) { updateLocationRec(); }
   requestAnimationFrame(animate);
 }
 
@@ -2147,15 +2419,22 @@ def display_main_app() -> None:
     _sync_selected_stop_from_query()
     update_shuttle_positions(advance=False)
 
-    # Hide Streamlit chrome so the split-pane fills the viewport
+    # Hide Streamlit chrome and pin the iframe to fill the full viewport
     st.markdown("""
     <style>
-    header[data-testid="stHeader"] { visibility:hidden; height:0; }
+    header[data-testid="stHeader"] { display:none !important; }
     [data-testid="stSidebar"]       { display:none !important; }
     [data-testid="collapsedControl"]{ display:none !important; }
+    footer { display:none !important; }
+    html, body, .stApp { overflow:hidden !important; }
     .stMainBlockContainer { padding:0 !important; max-width:100% !important; }
-    .stMain > div:first-child { padding:0 !important; }
-    footer { display:none; }
+    /* Pin the iframe to the viewport so it always fills the screen */
+    iframe[title="st.components.v1.html"] {
+      position:fixed !important;
+      top:0 !important; left:0 !important;
+      width:100vw !important; height:100vh !important;
+      border:none !important; z-index:999 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 

@@ -92,19 +92,19 @@ BC_ROUTES = {
             (42.335945, -71.167993)
         ],
         "stops": [
-        { "name": "A. Conte Forum", "lat": 42.336034, "lon": -71.167059 },
-        { "name": "B. McElroy – Beacon St.", "lat": 42.333223, "lon": -71.170378 },
-        { "name": "C. College Road", "lat": 42.336401, "lon": -71.171620 },
-        { "name": "D. Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 },
-        { "name": "E. Evergreen Cemetery", "lat": 42.339967, "lon": -71.163041 },
-        { "name": "F. 2000 Commonwealth Ave.", "lat": 42.339635, "lon": -71.158427 },
-        { "name": "G. Reservoir MBTA Stop", "lat": 42.335034, "lon": -71.148967 },
-        { "name": "H. B.O.A – Chestnut Hill Ave.", "lat": 42.337098113769784, "lon": -71.15194853316866 },
-        { "name": "I. Chiswick Rd.", "lat": 42.340570, "lon": -71.151345 },
-        { "name": "J. Corner of Comm. Ave / Chestnut Hill Ave.", "lat": 42.338299, "lon": -71.153711 },
-        { "name": "K. South Street", "lat": 42.339710, "lon": -71.157444 },
-        { "name": "L. Greycliff Hall", "lat": 42.340291973724014, "lon": -71.16119303561617 },
-        { "name": "M. Robsham Theater", "lat": 42.338145, "lon": -71.168858 }
+        { "name": "Conte Forum", "lat": 42.336034, "lon": -71.167059 },
+        { "name": "McElroy – Beacon St.", "lat": 42.333223, "lon": -71.170378 },
+        { "name": "College Road", "lat": 42.336401, "lon": -71.171620 },
+        { "name": "Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 },
+        { "name": "Evergreen Cemetery", "lat": 42.339967, "lon": -71.163041 },
+        { "name": "2000 Commonwealth Ave.", "lat": 42.339635, "lon": -71.158427 },
+        { "name": "Reservoir MBTA Stop", "lat": 42.335034, "lon": -71.148967 },
+        { "name": "B.O.A – Chestnut Hill Ave.", "lat": 42.337098113769784, "lon": -71.15194853316866 },
+        { "name": "Chiswick Rd.", "lat": 42.340570, "lon": -71.151345 },
+        { "name": "Corner of Comm. Ave / Chestnut Hill Ave.", "lat": 42.338299, "lon": -71.153711 },
+        { "name": "South Street", "lat": 42.339710, "lon": -71.157444 },
+        { "name": "Greycliff Hall", "lat": 42.340291973724014, "lon": -71.16119303561617 },
+        { "name": "Robsham Theater", "lat": 42.338145, "lon": -71.168858 }
         ],
     },
 
@@ -187,14 +187,14 @@ BC_ROUTES = {
         ],
 
         "stops": [
-            { "name": "A. Newton – Stuart Hall", "lat": 42.34120257347508, "lon": -71.19375860329504 },
-            { "name": "B. Newton – Main Gate", "lat": 42.34176656451543, "lon": -71.19274984496883 },
-            { "name": "C. Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 },
-            { "name": "D. Robsham Theater", "lat": 42.337657520927316, "lon": -71.16941654899645 },
-            { "name": "E. Conte Forum", "lat": 42.336034, "lon": -71.167059 },
-            { "name": "F. McElroy – Beacon St.", "lat": 42.333223, "lon": -71.170378 },
-            { "name": "G. College Road", "lat": 42.336401, "lon": -71.171620 },
-            { "name": "H. Newton – Duchesne", "lat": 42.34349297754804, "lon": -71.19076002050403 }
+            { "name": "Newton – Stuart Hall", "lat": 42.34120257347508, "lon": -71.19375860329504 },
+            { "name": "Newton – Main Gate", "lat": 42.34176656451543, "lon": -71.19274984496883 },
+            { "name": "Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 },
+            { "name": "Robsham Theater", "lat": 42.337657520927316, "lon": -71.16941654899645 },
+            { "name": "Conte Forum", "lat": 42.336034, "lon": -71.167059 },
+            { "name": "McElroy – Beacon St.", "lat": 42.333223, "lon": -71.170378 },
+            { "name": "College Road", "lat": 42.336401, "lon": -71.171620 },
+            { "name": "Newton – Duchesne", "lat": 42.34349297754804, "lon": -71.19076002050403 }
         ],
     },
 }
@@ -421,7 +421,7 @@ def initialize_simulation_state() -> None:
         st.session_state.simulation_last_updated = datetime.now()
 
     if "user_stop" not in st.session_state or st.session_state.user_stop not in st.session_state.stops:
-        st.session_state.user_stop = "A. Conte Forum"
+        st.session_state.user_stop = "Conte Forum"
 
     if "selected_route_filter" not in st.session_state:
         st.session_state.selected_route_filter = "All routes"
