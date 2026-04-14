@@ -804,6 +804,12 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .msg-err   {align-self:center;background:#7f1d1d;color:#fca5a5;padding:6px 10px;
     border-radius:8px;font-size:12px;max-width:90%;}
   .placeholder {color:#475569;font-size:12px;text-align:center;padding:20px 10px;line-height:1.9;}
+  #suggestions {padding:8px 10px 10px;border-top:1px solid rgba(51,65,85,.65);flex-shrink:0;}
+  .suggest-label {font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px;}
+  .suggest-grid {display:flex;flex-wrap:wrap;gap:8px;}
+  .suggest-chip {border:1px solid #334155;background:#0f172a;color:#cbd5e1;padding:8px 10px;border-radius:999px;
+    font-size:12px;line-height:1.35;cursor:pointer;transition:background .15s ease, transform .15s ease, color .15s ease;}
+  .suggest-chip:hover {background:#1d4ed8;color:#fff;transform:translateY(-1px);}
   .delay-ok  {display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
     font-size:11px;font-weight:700;background:#d1fae5;color:#065f46;}
   .delay-warn{display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
@@ -830,6 +836,38 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     border:1px solid #1e40af;font-size:11px;color:#93c5fd;display:flex;align-items:center;gap:6px;}
   #schedule-badge .rm {cursor:pointer;color:#64748b;font-size:13px;margin-left:auto;}
   #schedule-badge .rm:hover {color:#f87171;}
+  #profile-btn {display:inline-flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+    padding:4px 10px 4px 4px;border-radius:999px;cursor:pointer;line-height:1;}
+  #profile-btn:hover {background:#1f2937;}
+  #profile-avatar {width:28px;height:28px;border-radius:50%;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;letter-spacing:.03em;}
+  #profile-name {font-size:12px;font-weight:700;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #profile-modal-backdrop {position:fixed;inset:0;background:rgba(15,23,42,.48);display:none;align-items:flex-start;justify-content:flex-end;z-index:1400;}
+  #profile-modal-backdrop.open {display:flex;}
+  #profile-modal {width:min(360px, calc(100vw - 24px));margin:60px 14px 0 0;background:#ffffff;color:#0f172a;border-radius:20px;
+    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;border:1px solid #dbeafe;}
+  .profile-head {padding:16px 18px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .profile-head h3 {font-size:18px;font-weight:900;letter-spacing:-.02em;}
+  .profile-head p {font-size:12px;color:#64748b;line-height:1.45;margin-top:4px;}
+  .profile-close {border:none;background:#eff6ff;color:#1d4ed8;border-radius:999px;width:30px;height:30px;cursor:pointer;font-size:16px;}
+  .profile-body {padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 96px);overflow-y:auto;}
+  .profile-group {display:flex;flex-direction:column;gap:8px;}
+  .profile-label {font-size:12px;font-weight:800;color:#334155;letter-spacing:.02em;}
+  .profile-help {font-size:11px;color:#64748b;line-height:1.45;}
+  .profile-input, .profile-select {width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:13px;color:#0f172a;outline:none;}
+  .profile-input:focus, .profile-select:focus {border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12);}
+  .profile-options {display:flex;flex-wrap:wrap;gap:8px;}
+  .profile-choice {position:relative;display:inline-flex;align-items:center;}
+  .profile-choice input {position:absolute;opacity:0;pointer-events:none;}
+  .profile-choice span {display:inline-flex;align-items:center;padding:8px 10px;border-radius:999px;border:1px solid #cbd5e1;background:#f8fafc;
+    font-size:12px;font-weight:700;color:#334155;cursor:pointer;transition:all .15s ease;}
+  .profile-choice input:checked + span {background:#dbeafe;border-color:#60a5fa;color:#1d4ed8;}
+  .profile-actions {display:flex;gap:10px;justify-content:flex-end;padding-top:4px;}
+  .profile-save, .profile-secondary {border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;}
+  .profile-save {background:#2563eb;color:#fff;}
+  .profile-save:hover {background:#1d4ed8;}
+  .profile-secondary {background:#eff6ff;color:#1d4ed8;}
+  .profile-secondary:hover {background:#dbeafe;}
   #theme-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
     padding:4px 8px;border-radius:6px;color:#94a3b8;flex-shrink:0;margin-left:auto;line-height:1;}
   #theme-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
@@ -849,6 +887,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #chat-box::-webkit-scrollbar-thumb {background:#cbd5e1;}
   body.light-mode .msg-ai {background:#dbeafe;color:#1e3a5f;}
   body.light-mode .placeholder {color:#94a3b8;}
+  body.light-mode #suggestions {border-top-color:#e2e8f0;}
+  body.light-mode .suggest-label {color:#64748b;}
+  body.light-mode .suggest-chip {background:#f8fafc;border-color:#cbd5e1;color:#334155;}
+  body.light-mode .suggest-chip:hover {background:#2563eb;color:#fff;border-color:#2563eb;}
   body.light-mode #thinking {background:#dbeafe;}
   body.light-mode .dot {background:#64748b;}
   body.light-mode #input-row {border-top-color:#cbd5e1;}
@@ -858,6 +900,8 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #upload-btn {background:#f1f5f9;border-color:#cbd5e1;color:#64748b;}
   body.light-mode #upload-btn:hover {background:#e2e8f0;color:#0f172a;}
   body.light-mode #schedule-badge {background:#dbeafe;border-color:#3b82f6;color:#1e40af;}
+  body.light-mode #profile-btn {background:#ffffff;border-color:#cbd5e1;color:#0f172a;}
+  body.light-mode #profile-btn:hover {background:#f8fafc;}
   body.light-mode #theme-btn {border-color:#cbd5e1;color:#64748b;}
   body.light-mode #theme-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
   body.light-mode #drag-handle {background:#e2e8f0;border-color:#cbd5e1;}
@@ -973,13 +1017,14 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         "Which shuttle for my 9am Monday class?"
       </div>
     </div>
+    <div id="suggestions"></div>
     <input id="schedule-file" type="file" accept="image/*" style="display:none"/>
     <div id="schedule-badge" style="display:none">
       <span>📅</span><span id="schedule-label">Schedule loaded</span>
       <span class="rm" onclick="clearSchedule()" title="Remove schedule">✕</span>
     </div>
     <div id="input-row">
-      <button id="upload-btn" title="Upload class schedule image" onclick="document.getElementById('schedule-file').click()">📅</button>
+      <button id="upload-btn" title="Open rider profile" onclick="openProfileModal()">👤</button>
       <input id="user-inp" type="text" placeholder="Ask about shuttles or report a delay…"/>
       <button id="send-btn">Send ➤</button>
     </div>
@@ -991,6 +1036,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     <div id="map-header">
       <h2>🗺️ Live Shuttle Map</h2>
       <span id="map-ts"></span>
+      <button id="profile-btn" onclick="openProfileModal()" title="Open profile">
+        <span id="profile-avatar">BC</span>
+        <span id="profile-name">Your profile</span>
+      </button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
     </div>
     <div id="map-body">
@@ -1007,6 +1056,77 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     </div>
   </div>
 
+</div>
+<div id="profile-modal-backdrop" onclick="handleProfileBackdrop(event)">
+  <div id="profile-modal">
+    <div class="profile-head">
+      <div>
+        <h3>Rider Profile</h3>
+        <p>Tell the assistant a bit about you so its recommendations can feel more personal.</p>
+      </div>
+      <button class="profile-close" onclick="closeProfileModal()" title="Close profile">✕</button>
+    </div>
+    <div class="profile-body">
+      <div class="profile-group">
+        <label class="profile-label" for="profile-nickname">Nickname</label>
+        <input id="profile-nickname" class="profile-input" type="text" placeholder="ex. Maya"/>
+      </div>
+
+      <div class="profile-group">
+        <div class="profile-label">Timing style</div>
+        <div class="profile-help">Would you rather leave early or leave more room to procrastinate?</div>
+        <div class="profile-options">
+          <label class="profile-choice"><input type="radio" name="timing-style" value="early"/><span>Leave early</span></label>
+          <label class="profile-choice"><input type="radio" name="timing-style" value="balanced"/><span>Balanced</span></label>
+          <label class="profile-choice"><input type="radio" name="timing-style" value="procrastinate"/><span>Procrastinate</span></label>
+        </div>
+      </div>
+
+      <div class="profile-group">
+        <div class="profile-label">Crowding preference</div>
+        <div class="profile-options">
+          <label class="profile-choice"><input type="radio" name="crowd-style" value="avoid_crowds"/><span>Avoid crowded buses</span></label>
+          <label class="profile-choice"><input type="radio" name="crowd-style" value="balanced"/><span>No strong preference</span></label>
+          <label class="profile-choice"><input type="radio" name="crowd-style" value="fastest"/><span>Fastest ride only</span></label>
+        </div>
+      </div>
+
+      <div class="profile-group">
+        <label class="profile-label" for="profile-max-wait">Maximum wait you are usually okay with</label>
+        <select id="profile-max-wait" class="profile-select">
+          <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="20">20 minutes</option>
+          <option value="30">30 minutes</option>
+        </select>
+      </div>
+
+      <div class="profile-group">
+        <label class="profile-label" for="profile-route">Preferred route</label>
+        <select id="profile-route" class="profile-select">
+          <option value="">No strong preference</option>
+          <option value="Comm Ave All Stops">Comm Ave All Stops</option>
+          <option value="Newton Campus Express">Newton Campus Express</option>
+        </select>
+      </div>
+
+      <div class="profile-group">
+        <div class="profile-label">Class schedule</div>
+        <div class="profile-help">Upload an image so the assistant can help with class-specific shuttle planning.</div>
+        <div id="profile-schedule-status" class="profile-help">No schedule uploaded yet.</div>
+        <div class="profile-actions" style="justify-content:flex-start;padding-top:0;">
+          <button class="profile-secondary" onclick="document.getElementById('schedule-file').click()">Upload schedule</button>
+          <button class="profile-secondary" onclick="clearSchedule()">Remove schedule</button>
+        </div>
+      </div>
+
+      <div class="profile-actions">
+        <button class="profile-secondary" onclick="closeProfileModal()">Cancel</button>
+        <button class="profile-save" onclick="saveProfile()">Save profile</button>
+      </div>
+    </div>
+  </div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -1118,8 +1238,386 @@ document.addEventListener('mousemove', function(e){
 document.addEventListener('mouseup', function(){ dragging=false; handle.classList.remove('dragging'); });
 
 // ── chat ─────────────────────────────────────────────────────────────────────
+var selectedStop = mapPayload.selected_stop;
 var chatHistory = Array.isArray(AI_CHAT_HISTORY) ? AI_CHAT_HISTORY.slice() : [];
 var userSchedule = null; // parsed schedule text extracted from uploaded image
+var userProfile = {
+  nickname: '',
+  timing_style: 'balanced',
+  crowd_style: 'balanced',
+  max_wait_minutes: '10',
+  preferred_route: ''
+};
+
+function escapeHtml(text) {
+  return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function personalizedIntro() {
+  return userProfile.nickname && userProfile.nickname.trim()
+    ? userProfile.nickname.trim() + ', '
+    : '';
+}
+
+function preferredRouteText() {
+  return userProfile.preferred_route || 'the best route';
+}
+
+function parseDaysFromScheduleLine(line) {
+  var dayTokens = [];
+  var patterns = [
+    {name: 'Sunday', aliases: ['sun', 'sunday', 'su']},
+    {name: 'Monday', aliases: ['mon', 'monday', 'm']},
+    {name: 'Tuesday', aliases: ['tue', 'tues', 'tuesday', 'tu']},
+    {name: 'Wednesday', aliases: ['wed', 'wednesday', 'w']},
+    {name: 'Thursday', aliases: ['thu', 'thur', 'thurs', 'thursday', 'th']},
+    {name: 'Friday', aliases: ['fri', 'friday', 'f']},
+    {name: 'Saturday', aliases: ['sat', 'saturday', 'sa']}
+  ];
+  var lower = line.toLowerCase();
+
+  patterns.forEach(function(pattern) {
+    if (pattern.aliases.some(function(alias) {
+      return new RegExp('(^|[^a-z])' + alias + '([^a-z]|$)').test(lower);
+    })) {
+      dayTokens.push(pattern.name);
+    }
+  });
+
+  if (!dayTokens.length) {
+    var compactMatch = line.match(/\b(MWF|TR|TTH|MW|WF|MTWTHF)\b/i);
+    if (compactMatch) {
+      var compact = compactMatch[1].toUpperCase();
+      if (compact === 'MWF') dayTokens = ['Monday', 'Wednesday', 'Friday'];
+      else if (compact === 'MW') dayTokens = ['Monday', 'Wednesday'];
+      else if (compact === 'WF') dayTokens = ['Wednesday', 'Friday'];
+      else if (compact === 'TR' || compact === 'TTH') dayTokens = ['Tuesday', 'Thursday'];
+      else if (compact === 'MTWTHF') dayTokens = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    }
+  }
+
+  return dayTokens;
+}
+
+function parseStartTimeMinutes(line) {
+  var match = line.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*[–-]\s*\d{1,2}(?::\d{2})?\s*(am|pm)/i)
+    || line.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (!match) return null;
+
+  var hour = parseInt(match[1], 10);
+  var minute = parseInt(match[2] || '0', 10);
+  var meridiem = match[3].toLowerCase();
+  if (meridiem === 'pm' && hour !== 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  return hour * 60 + minute;
+}
+
+function parseCourseName(line) {
+  var parts = line.split(',').map(function(part) { return part.trim(); }).filter(Boolean);
+  if (parts.length >= 3) return parts[2];
+  if (parts.length >= 2) return parts[parts.length - 1];
+  return line.trim();
+}
+
+function parseScheduleEntries() {
+  if (!userSchedule) return [];
+  return userSchedule
+    .split('\n')
+    .map(function(line) { return line.trim(); })
+    .filter(Boolean)
+    .map(function(line) {
+      return {
+        raw: line,
+        days: parseDaysFromScheduleLine(line),
+        startMinutes: parseStartTimeMinutes(line),
+        course: parseCourseName(line)
+      };
+    })
+    .filter(function(entry) {
+      return entry.days.length && entry.startMinutes !== null;
+    });
+}
+
+function nextScheduledClass() {
+  var entries = parseScheduleEntries();
+  if (!entries.length) return null;
+
+  var dayIndex = {
+    Sunday: 0,
+    Monday: 1,
+    Tuesday: 2,
+    Wednesday: 3,
+    Thursday: 4,
+    Friday: 5,
+    Saturday: 6
+  };
+
+  var now = new Date();
+  var best = null;
+
+  entries.forEach(function(entry) {
+    entry.days.forEach(function(dayName) {
+      var candidate = new Date(now);
+      var offset = (dayIndex[dayName] - now.getDay() + 7) % 7;
+      candidate.setDate(now.getDate() + offset);
+      candidate.setHours(Math.floor(entry.startMinutes / 60), entry.startMinutes % 60, 0, 0);
+      if (candidate <= now) candidate.setDate(candidate.getDate() + 7);
+
+      if (!best || candidate < best.when) {
+        best = {
+          when: candidate,
+          dayName: dayName,
+          course: entry.course,
+          raw: entry.raw
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
+function formatClassTimeLabel(date) {
+  return date.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+}
+
+function relativeClassDayLabel(date) {
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  var diffDays = Math.round((target - today) / 86400000);
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'tomorrow';
+  return date.toLocaleDateString('en-US', {weekday: 'long'});
+}
+
+function getProfileStorageKey() {
+  return 'bc_shuttle_user_profile_v1';
+}
+
+function getScheduleStorageKey() {
+  return 'bc_shuttle_schedule_text_v1';
+}
+
+function loadProfile() {
+  try {
+    var saved = localStorage.getItem(getProfileStorageKey());
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      userProfile = Object.assign({}, userProfile, parsed || {});
+    }
+  } catch (error) {
+    console.warn('Could not restore user profile', error);
+  }
+
+  try {
+    var savedSchedule = localStorage.getItem(getScheduleStorageKey());
+    if (savedSchedule) userSchedule = savedSchedule;
+  } catch (error) {
+    console.warn('Could not restore schedule text', error);
+  }
+}
+
+function saveProfileToStorage() {
+  localStorage.setItem(getProfileStorageKey(), JSON.stringify(userProfile));
+  if (userSchedule) {
+    localStorage.setItem(getScheduleStorageKey(), userSchedule);
+  } else {
+    localStorage.removeItem(getScheduleStorageKey());
+  }
+}
+
+function currentNickname() {
+  return userProfile.nickname && userProfile.nickname.trim() ? userProfile.nickname.trim() : 'Your profile';
+}
+
+function currentInitials() {
+  var name = currentNickname();
+  if (name === 'Your profile') return 'BC';
+  return name.split(/\s+/).slice(0, 2).map(function(part) { return part.charAt(0).toUpperCase(); }).join('');
+}
+
+function syncProfileUi() {
+  document.getElementById('profile-name').textContent = currentNickname();
+  document.getElementById('profile-avatar').textContent = currentInitials();
+  document.getElementById('profile-nickname').value = userProfile.nickname || '';
+  document.getElementById('profile-max-wait').value = String(userProfile.max_wait_minutes || '10');
+  document.getElementById('profile-route').value = userProfile.preferred_route || '';
+
+  document.querySelectorAll('input[name="timing-style"]').forEach(function(input) {
+    input.checked = input.value === (userProfile.timing_style || 'balanced');
+  });
+  document.querySelectorAll('input[name="crowd-style"]').forEach(function(input) {
+    input.checked = input.value === (userProfile.crowd_style || 'balanced');
+  });
+
+  var scheduleStatus = document.getElementById('profile-schedule-status');
+  if (userSchedule) {
+    scheduleStatus.textContent = 'Schedule uploaded and ready for class-aware recommendations.';
+  } else {
+    scheduleStatus.textContent = 'No schedule uploaded yet.';
+  }
+}
+
+function openProfileModal() {
+  syncProfileUi();
+  document.getElementById('profile-modal-backdrop').classList.add('open');
+}
+
+function closeProfileModal() {
+  document.getElementById('profile-modal-backdrop').classList.remove('open');
+}
+
+function handleProfileBackdrop(event) {
+  if (event.target.id === 'profile-modal-backdrop') closeProfileModal();
+}
+
+function saveProfile() {
+  var timingChoice = document.querySelector('input[name="timing-style"]:checked');
+  var crowdChoice = document.querySelector('input[name="crowd-style"]:checked');
+  userProfile.nickname = document.getElementById('profile-nickname').value.trim();
+  userProfile.timing_style = timingChoice ? timingChoice.value : 'balanced';
+  userProfile.crowd_style = crowdChoice ? crowdChoice.value : 'balanced';
+  userProfile.max_wait_minutes = document.getElementById('profile-max-wait').value;
+  userProfile.preferred_route = document.getElementById('profile-route').value;
+  saveProfileToStorage();
+  syncProfileUi();
+  renderSuggestedQuestions();
+  closeProfileModal();
+}
+
+function profileSummaryLines() {
+  var lines = [];
+  if (userProfile.nickname) lines.push('Nickname: ' + userProfile.nickname);
+  if (userProfile.timing_style === 'early') lines.push('Timing preference: prefers leaving early and avoiding lateness.');
+  else if (userProfile.timing_style === 'procrastinate') lines.push('Timing preference: tends to leave later and values procrastination time.');
+  else lines.push('Timing preference: balanced.');
+
+  if (userProfile.crowd_style === 'avoid_crowds') lines.push('Crowding preference: prefers less crowded buses.');
+  else if (userProfile.crowd_style === 'fastest') lines.push('Crowding preference: prioritizes the fastest ride over comfort.');
+  else lines.push('Crowding preference: balanced.');
+
+  lines.push('Typical max wait: ' + userProfile.max_wait_minutes + ' minutes.');
+  if (userProfile.preferred_route) lines.push('Preferred route: ' + userProfile.preferred_route + '.');
+  return lines;
+}
+
+function buildSuggestedQuestions() {
+  var suggestions = [];
+  var intro = personalizedIntro();
+  var maxWait = String(userProfile.max_wait_minutes || '10');
+  var preferredRoute = preferredRouteText();
+  var nextClass = nextScheduledClass();
+  var nextClassDay = nextClass ? relativeClassDayLabel(nextClass.when) : '';
+  var nextClassTime = nextClass ? formatClassTimeLabel(nextClass.when) : '';
+  var nextClassCourse = nextClass && nextClass.course ? nextClass.course : 'class';
+
+  if (!chatHistory.length) {
+    if (nextClass) {
+      suggestions.push(
+        "Do you want me to help plan when to leave for your " + nextClassTime + " " + nextClassDay + " " + nextClassCourse + "?"
+      );
+    }
+
+    if (userProfile.timing_style === 'early') {
+      suggestions.push(intro + "which shuttle should I take from " + selectedStop + " if I never want to be late?");
+      suggestions.push("Which option gives me the safest arrival buffer for my next trip?");
+    } else if (userProfile.timing_style === 'procrastinate') {
+      suggestions.push(intro + "what is the latest shuttle I can take from " + selectedStop + " without cutting it too close?");
+      suggestions.push("Can you help me leave as late as possible but still make it on time?");
+    } else {
+      suggestions.push("When is the next shuttle to " + selectedStop + "?");
+      suggestions.push("Which shuttle should I take from " + selectedStop + " if I want the lowest-risk option?");
+    }
+
+    if (userProfile.crowd_style === 'avoid_crowds') {
+      suggestions.push("I would rather wait up to " + maxWait + " minutes for a less crowded bus. What should I take?");
+    } else if (userProfile.crowd_style === 'fastest') {
+      suggestions.push("I care more about speed than crowding. What is the fastest shuttle I can catch?");
+    } else {
+      suggestions.push("Can you compare the fastest option with the most comfortable one?");
+    }
+
+    if (userProfile.preferred_route) {
+      suggestions.push("Is " + preferredRoute + " still the best choice for me right now?");
+    } else {
+      suggestions.push("Would waiting up to " + maxWait + " minutes improve my options?");
+    }
+
+    if (userSchedule) {
+      if (nextClass) {
+        suggestions.push("Can you check the best shuttle plan for my next class on " + nextClassDay + "?");
+      } else {
+        suggestions.push("Can you use my uploaded schedule to help me plan my next class commute?");
+      }
+    } else {
+      suggestions.push("What if I leave 5 minutes later?");
+    }
+  } else {
+    if (nextClass) {
+      suggestions.push("Can you remind me when I should leave for my " + nextClassTime + " " + nextClassDay + " class?");
+    }
+
+    if (userProfile.timing_style === 'early') {
+      suggestions.push("How confident are you that this keeps me from being late?");
+      suggestions.push("Is there an even safer option if I want more time buffer?");
+    } else if (userProfile.timing_style === 'procrastinate') {
+      suggestions.push("How late can I leave before this gets risky?");
+      suggestions.push("What is the latest realistic departure time for me?");
+    } else {
+      suggestions.push("How confident are you in that recommendation?");
+      suggestions.push("Can you compare the best option with the next alternative?");
+    }
+
+    if (userProfile.crowd_style === 'avoid_crowds') {
+      suggestions.push("Is there a less crowded option if I wait " + maxWait + " minutes?");
+    } else if (userProfile.crowd_style === 'fastest') {
+      suggestions.push("Is there any faster option even if it is more crowded?");
+    } else {
+      suggestions.push("What if I wait 10 more minutes?");
+    }
+
+    if (userProfile.preferred_route) {
+      suggestions.push("Would you still recommend " + preferredRoute + " for me?");
+    } else if (userSchedule) {
+      if (nextClass) {
+        suggestions.push("What is the safest plan for getting to my " + nextClassTime + " " + nextClassDay + " class?");
+      } else {
+        suggestions.push("Which shuttle should I take for my next class?");
+      }
+    } else {
+      suggestions.push("Would your recommendation change if I started from " + selectedStop + "?");
+    }
+  }
+  return suggestions.filter(function(item, index, arr) {
+    return item && arr.indexOf(item) === index;
+  }).slice(0, 4);
+}
+
+function renderSuggestedQuestions() {
+  var root = document.getElementById('suggestions');
+  if (!root) return;
+  var suggestions = buildSuggestedQuestions();
+  if (!suggestions.length) {
+    root.innerHTML = '';
+    return;
+  }
+
+  var label = chatHistory.length ? 'Keep exploring' : 'Suggested starters';
+  root.innerHTML =
+    '<div class="suggest-label">' + escapeHtml(label) + '</div>' +
+    '<div class="suggest-grid">' +
+    suggestions.map(function(question, idx) {
+      return '<button class="suggest-chip" data-index="' + idx + '">' + escapeHtml(question) + '</button>';
+    }).join('') +
+    '</div>';
+
+  root.querySelectorAll('.suggest-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      sendMessage(suggestions[parseInt(chip.getAttribute('data-index'), 10)]);
+    });
+  });
+}
 
 function appendMsg(role, html, badgeText, badgeOk) {
   var box = document.getElementById('chat-box');
@@ -1144,12 +1642,16 @@ function clearChat() {
   chatHistory = [];
   var box = document.getElementById('chat-box');
   box.innerHTML = '<div class="placeholder">💡 Try asking:<br>"When\'s the next shuttle to Conte Forum?"<br>"Newton express is 10 minutes late."</div>';
+  renderSuggestedQuestions();
 }
 
 function clearSchedule() {
   userSchedule = null;
   document.getElementById('schedule-badge').style.display = 'none';
   document.getElementById('schedule-file').value = '';
+  saveProfileToStorage();
+  syncProfileUi();
+  renderSuggestedQuestions();
 }
 
 document.getElementById('schedule-file').addEventListener('change', async function() {
@@ -1190,6 +1692,7 @@ document.getElementById('schedule-file').addEventListener('change', async functi
       var data = await resp.json();
       if (data.error) throw new Error(data.error.message);
       userSchedule = data.choices[0].message.content.trim();
+      saveProfileToStorage();
       var label = file.name.length > 24 ? file.name.slice(0,22)+'…' : file.name;
       document.getElementById('schedule-label').textContent = 'Schedule loaded: ' + label;
       document.getElementById('schedule-badge').style.display = 'flex';
@@ -1197,11 +1700,14 @@ document.getElementById('schedule-file').addEventListener('change', async functi
         '📅 I\'ve read your schedule! Ask me things like:<br>' +
         '"Which shuttle should I take to not be late for my 9am Monday class?"<br>' +
         '"What\'s the best shuttle for my Tuesday afternoon classes?"');
+      chatHistory.push({role:'assistant', content:'I have read your schedule.'});
+      syncProfileUi();
+      renderSuggestedQuestions();
     } catch(err) {
       appendMsg('err', 'Could not read schedule: ' + err.message);
     }
     uploadBtn.disabled = false;
-    uploadBtn.textContent = '📅';
+    uploadBtn.textContent = '👤';
   };
   reader.readAsDataURL(file);
 });
@@ -1226,6 +1732,7 @@ function onStopChange(name) {
   document.getElementById('stop-sel').value = name;
   updateSelectedStopMarkers();
   renderStopCard();
+  renderSuggestedQuestions();
   leafletMap.setView(stopCoords(name), 14);
 }
 
@@ -1251,6 +1758,10 @@ function buildContext() {
       lines.push('  - '+a.shuttle.label+' ('+a.shuttle.route+'): '+a.etaMinutes+' min away, capacity '+a.shuttle.capacity_pct+'%');
     });
   } else { lines.push('  No arrivals found.'); }
+  lines.push('', '=== USER PROFILE ===');
+  profileSummaryLines().forEach(function(line) {
+    lines.push('- ' + line);
+  });
   if (userSchedule) {
     lines.push('', '=== USER\'S CLASS SCHEDULE ===', userSchedule);
   }
@@ -1288,6 +1799,8 @@ function toggleTheme() {
 
 // Show server-key badge or user key input depending on configuration
 (function() {
+  loadProfile();
+  syncProfileUi();
   var keyRow = document.getElementById('key-row');
   var keyInp = document.getElementById('api-key-inp');
   if (AI_SERVER_CONFIGURED) {
@@ -1302,10 +1815,10 @@ function toggleTheme() {
   }
 })();
 
-async function sendMessage() {
+async function sendMessage(prefilledMessage) {
   var inputEl = document.getElementById('user-inp');
   var sendBtn = document.getElementById('send-btn');
-  var userMsg = inputEl.value.trim();
+  var userMsg = typeof prefilledMessage === 'string' ? prefilledMessage.trim() : inputEl.value.trim();
   var apiKey = AI_API_KEY || (document.getElementById('api-key-inp').value || '').trim();
   if (!apiKey) {
     appendMsg('err', 'Enter your OpenAI API key above to enable AI chat.');
@@ -1316,7 +1829,8 @@ async function sendMessage() {
   inputEl.value = '';
   sendBtn.disabled = true;
   chatHistory.push({role: 'user', content: userMsg});
-  appendMsg('user', userMsg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>'));
+  appendMsg('user', escapeHtml(userMsg).replace(/\n/g,'<br>'));
+  renderSuggestedQuestions();
 
   var box = document.getElementById('chat-box');
   var thinkEl = document.createElement('div');
@@ -1352,7 +1866,8 @@ async function sendMessage() {
       badgeText = parsed.mins === 0 ? '✅ Delay cleared' : '⚠️ +'+ parsed.mins +' min delay applied';
       badgeOk = parsed.mins === 0;
     }
-    appendMsg('ai', clean.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>'), badgeText, badgeOk);
+    appendMsg('ai', escapeHtml(clean).replace(/\n/g,'<br>'), badgeText, badgeOk);
+    renderSuggestedQuestions();
   } catch(err) {
     if (thinkEl.parentNode) thinkEl.parentNode.removeChild(thinkEl);
     chatHistory.pop();
@@ -1377,11 +1892,11 @@ async function sendMessage() {
   });
   box.scrollTop = box.scrollHeight;
 })();
+renderSuggestedQuestions();
 
 // ── map ───────────────────────────────────────────────────────────────────────
 document.getElementById('map-ts').textContent = 'Initialized at ' + INIT_TIME + ' · buses update in real time';
 
-var selectedStop = mapPayload.selected_stop;
 var leafletMap;
 var shuttles;
 var activeRoute = mapPayload.selected_route_filter && mapPayload.selected_route_filter !== 'All routes'
