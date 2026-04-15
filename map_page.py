@@ -38,34 +38,198 @@ def _sync_selected_stop_from_query() -> None:
 
 
 def show_onboarding() -> None:
-    st.title("🚌 Welcome to BC Shuttle Tracker")
-    st.markdown("### Human-AI Collaboration for Reliable Transit")
-    st.info("This demo now includes live route simulation so you can watch buses circulate around campus.")
+    st.markdown(
+        """
+        <style>
+        html, body, .stApp {
+          height: 100vh;
+          overflow: hidden !important;
+        }
+        .stMainBlockContainer {
+          max-width: 100% !important;
+          padding: 0 !important;
+        }
+        .welcome-shell {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px 24px 96px;
+          background:
+            radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 32%),
+            linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+        }
+        .welcome-card {
+          width: min(1120px, 100%);
+          background: rgba(255,255,255,0.92);
+          border: 1px solid rgba(191,219,254,0.95);
+          border-radius: 28px;
+          box-shadow: 0 24px 60px rgba(37,99,235,0.10);
+          padding: 26px 28px 22px;
+        }
+        .welcome-kicker {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-size: 0.88rem;
+          font-weight: 700;
+        }
+        .welcome-title {
+          margin-top: 14px;
+          font-size: clamp(2.1rem, 3.5vw, 3.5rem);
+          line-height: 1.02;
+          letter-spacing: -0.04em;
+          color: #0f172a;
+          font-weight: 900;
+        }
+        .welcome-subtitle {
+          margin-top: 10px;
+          max-width: 760px;
+          color: #334155;
+          font-size: 1rem;
+          line-height: 1.5;
+        }
+        .welcome-grid {
+          margin-top: 18px;
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .welcome-panel {
+          border-radius: 22px;
+          padding: 15px 15px 14px;
+          min-height: 150px;
+        }
+        .welcome-panel h3 {
+          margin: 0 0 8px 0;
+          color: #0f172a;
+          font-size: 1rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+        }
+        .welcome-panel ul {
+          margin: 0;
+          padding-left: 18px;
+          color: #334155;
+          line-height: 1.5;
+          font-size: 0.92rem;
+        }
+        .welcome-panel li + li {
+          margin-top: 4px;
+        }
+        .welcome-panel.map { background: #ecfdf5; }
+        .welcome-panel.ai { background: #eff6ff; }
+        .welcome-panel.profile { background: #fff7ed; }
+        .welcome-footer {
+          margin-top: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 18px;
+          padding-top: 14px;
+          border-top: 1px solid #dbeafe;
+        }
+        .welcome-note {
+          color: #475569;
+          font-size: 0.92rem;
+          line-height: 1.45;
+          max-width: 700px;
+        }
+        .welcome-note strong {
+          color: #0f172a;
+        }
+        div.stButton {
+          position: fixed;
+          left: 50%;
+          bottom: 24px;
+          transform: translateX(-50%);
+          width: min(320px, calc(100vw - 32px));
+          margin: 0;
+          z-index: 10;
+        }
+        div.stButton > button[kind="primary"] {
+          width: 100%;
+          border-radius: 999px;
+          padding: 0.85rem 1.2rem;
+          font-weight: 800;
+          font-size: 1rem;
+          box-shadow: 0 14px 30px rgba(37,99,235,0.22);
+        }
+        @media (max-width: 900px) {
+          html, body, .stApp {
+            overflow: auto !important;
+          }
+          .welcome-shell {
+            min-height: auto;
+            padding: 18px;
+          }
+          .welcome-card {
+            padding: 24px 20px 22px;
+          }
+          .welcome-grid {
+            grid-template-columns: 1fr;
+          }
+          .welcome-footer {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          div.stButton {
+            position: static;
+            transform: none;
+            width: 100%;
+            margin: 18px auto 0;
+          }
+        }
+        </style>
+        <div class="welcome-shell">
+          <div class="welcome-card">
+            <div class="welcome-kicker">🚌 BC Shuttle Tracker</div>
+            <div class="welcome-title">Find the right shuttle faster.</div>
+            <div class="welcome-subtitle">
+              Live map predictions, location-aware suggestions, and an AI assistant all in one screen so riders can decide where to board and when to leave.
+            </div>
+            <div class="welcome-grid">
+              <div class="welcome-panel map">
+                <h3>Live Map</h3>
+                <ul>
+                  <li>Watch shuttles move around campus in real time.</li>
+                  <li>Tap a stop to change your destination instantly.</li>
+                  <li>Use route focus cards to simplify the map.</li>
+                </ul>
+              </div>
+              <div class="welcome-panel ai">
+                <h3>AI Assistant</h3>
+                <ul>
+                  <li>Ask which shuttle is best from your current stop.</li>
+                  <li>Compare ETA, crowding, and risk in plain language.</li>
+                  <li>Get suggestions that react to your selected stop.</li>
+                </ul>
+              </div>
+              <div class="welcome-panel profile">
+                <h3>Rider Profile</h3>
+                <ul>
+                  <li>Add your timing style and crowding preference.</li>
+                  <li>Upload your class schedule for better advice.</li>
+                  <li>Help the AI tailor suggestions to your habits.</li>
+                </ul>
+              </div>
+            </div>
+            <div class="welcome-footer">
+              <div class="welcome-note">
+                <strong>Everything important is meant to be visible immediately.</strong>
+                Open the live map to start, then use the built-in guide for a short walkthrough of the interface.
+              </div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### What the live map shows")
-        st.success(
-            """
-            - Colored route loops across BC and Newton
-            - Moving shuttles that update every 2 seconds
-            - Route-specific ETAs to your selected stop
-            - Capacity and confidence cards tied to the nearest bus
-            """
-        )
-
-    with col2:
-        st.markdown("#### What would make it truly live")
-        st.warning(
-            """
-            - Real GPS pings from shuttle devices
-            - Official route polylines and stop order
-            - Service alerts and detours from dispatch
-            - Rider reports to validate actual delay/crowding
-            """
-        )
-
-    st.markdown("---")
     if st.button("🚀 Open Live Map", type="primary"):
         st.session_state.has_seen_onboarding = True
         st.rerun()
@@ -901,6 +1065,9 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #theme-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
     padding:4px 8px;border-radius:6px;color:#94a3b8;flex-shrink:0;margin-left:auto;line-height:1;}
   #theme-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
+  #guide-btn {background:none;border:1px solid #334155;font-size:12px;cursor:pointer;
+    padding:6px 10px;border-radius:999px;color:#94a3b8;flex-shrink:0;font-weight:700;line-height:1;}
+  #guide-btn:hover {background:rgba(148,163,184,.12);color:#f1f5f9;}
 
   /* ── Light mode overrides ─────────────────────────────────────────────── */
   body.light-mode {background:#f1f5f9;color:#0f172a;}
@@ -934,6 +1101,8 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #profile-btn:hover {background:#f8fafc;}
   body.light-mode #theme-btn {border-color:#cbd5e1;color:#64748b;}
   body.light-mode #theme-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
+  body.light-mode #guide-btn {border-color:#cbd5e1;color:#475569;}
+  body.light-mode #guide-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
   body.light-mode #drag-handle {background:#e2e8f0;border-color:#cbd5e1;}
   body.light-mode #drag-handle:hover,body.light-mode #drag-handle.dragging {background:#3b82f6;border-color:#3b82f6;}
   body.light-mode #drag-handle::after {color:#94a3b8;}
@@ -1057,6 +1226,76 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode .loc-rec-best {background:#dbeafe !important;}
   body.light-mode .loc-rec-badge {color:#1d4ed8;}
   body.light-mode .loc-rec-eta {color:#0f172a;}
+
+  /* Guided tour */
+  #tour-overlay {position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;z-index:2500;pointer-events:auto;}
+  #tour-overlay.active {display:block;}
+  #tour-highlight {position:fixed;border:3px solid #60a5fa;border-radius:18px;
+    box-shadow:0 0 0 9999px rgba(15,23,42,.42), 0 20px 50px rgba(15,23,42,.35);
+    display:none;z-index:2501;pointer-events:none;transition:all .2s ease;}
+  #tour-highlight.active {display:block;}
+  #tour-card {position:fixed;display:none;z-index:2502;width:min(360px, calc(100vw - 32px));
+    background:#ffffff;color:#0f172a;border-radius:20px;padding:18px 18px 16px;
+    box-shadow:0 24px 60px rgba(15,23,42,.28);border:1px solid #dbeafe;}
+  #tour-card.active {display:block;}
+  #tour-step {font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#2563eb;}
+  #tour-title {margin-top:8px;font-size:20px;font-weight:900;letter-spacing:-.03em;color:#0f172a;}
+  #tour-body {margin-top:10px;font-size:14px;line-height:1.55;color:#334155;}
+  #tour-actions {display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;}
+  #tour-left-actions, #tour-right-actions {display:flex;align-items:center;gap:10px;}
+  .tour-btn {border:none;border-radius:999px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;}
+  .tour-btn.secondary {background:#eff6ff;color:#1d4ed8;}
+  .tour-btn.secondary:hover {background:#dbeafe;}
+  .tour-btn.primary {background:#2563eb;color:#fff;}
+  .tour-btn.primary:hover {background:#1d4ed8;}
+  .tour-btn.ghost {background:transparent;color:#64748b;padding:10px 8px;}
+  .tour-btn.ghost:hover {color:#0f172a;}
+  body.light-mode #tour-overlay {background:rgba(15,23,42,.32);}
+
+  @media (max-height: 940px) {
+    #ai-panel {width:380px;}
+    #ai-header {padding:10px 12px 8px;}
+    #ai-title {margin-bottom:6px;}
+    #key-row {margin-bottom:6px;}
+    #chat-box {padding:8px;gap:6px;}
+    .msg-user, .msg-ai {font-size:12px;padding:7px 10px;}
+    #suggestions {padding:6px 8px 8px;}
+    .suggest-label {margin-bottom:6px;}
+    .suggest-grid {gap:6px;}
+    .suggest-chip {padding:6px 9px;font-size:11px;}
+    #profile-hint {margin:4px 8px 0;padding:8px 10px;font-size:11px;}
+    #input-row {padding:8px;gap:5px;}
+    #user-inp, #send-btn, #upload-btn {font-size:12px;}
+    #map-header {padding:8px 12px;height:40px;gap:8px;}
+    #map-header h2 {font-size:14px;}
+    #map-header span {font-size:10px;}
+    #loc-banner {padding:6px 12px;font-size:11px;}
+    #map-body {grid-template-columns:1fr 220px;}
+    #route-side {padding:10px;font-size:11px;}
+    #route-side h3 {font-size:13px;margin:6px 0 5px;}
+    .card {padding:12px 12px 11px;margin-bottom:8px;border-radius:12px;}
+    .card .title {font-size:11px;}
+    .card .body {font-size:10px;}
+    .loc-rec-eta {font-size:18px;}
+    .stop-routes {margin-top:8px;gap:5px;}
+    .stop-route-pill {padding:4px 8px;font-size:8px;}
+    .stop-metric {margin-top:9px;padding-top:9px;}
+    .stop-metric-label {font-size:9px;}
+    .stop-metric-value {margin-top:4px;font-size:16px;}
+    .stop-metric-detail {margin-top:4px;font-size:9px;}
+    .stop-capacity-badge {padding:4px 8px;font-size:9px;}
+    .capacity-people {gap:4px;margin-top:8px;margin-bottom:4px;}
+    .capacity-person {width:7px;height:18px;}
+    .capacity-person::before {width:5px;height:5px;}
+    .capacity-person::after {top:6px;height:10px;}
+    .route-chip {padding:6px 10px;font-size:10px;}
+    .route-filter .route-stops {margin-top:8px;font-size:11px;}
+    .route-filter .route-action {margin-top:8px;font-size:10px;}
+    #profile-btn {padding:3px 8px 3px 3px;gap:6px;}
+    #profile-avatar {width:24px;height:24px;font-size:10px;}
+    #profile-name {font-size:11px;max-width:92px;}
+    #guide-btn, #locate-btn, #theme-btn {padding:4px 7px;}
+  }
 </style>
 </head>
 <body>
@@ -1110,6 +1349,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <span id="profile-avatar">BC</span>
         <span id="profile-name">Your profile</span>
       </button>
+      <button id="guide-btn" onclick="startTour(true)" title="Replay guide">Guide</button>
       <button id="locate-btn" onclick="centerOnUser()" title="Show my location">📍</button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
     </div>
@@ -1130,6 +1370,22 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     </div>
   </div>
 
+</div>
+<div id="tour-overlay"></div>
+<div id="tour-highlight"></div>
+<div id="tour-card" role="dialog" aria-live="polite" aria-label="User guide">
+  <div id="tour-step"></div>
+  <div id="tour-title"></div>
+  <div id="tour-body"></div>
+  <div id="tour-actions">
+    <div id="tour-left-actions">
+      <button class="tour-btn ghost" onclick="stopTour()">Skip</button>
+    </div>
+    <div id="tour-right-actions">
+      <button id="tour-back" class="tour-btn secondary" onclick="previousTourStep()">Back</button>
+      <button id="tour-next" class="tour-btn primary" onclick="nextTourStep()">Next</button>
+    </div>
+  </div>
 </div>
 <div id="profile-modal-backdrop" onclick="handleProfileBackdrop(event)">
   <div id="profile-modal">
@@ -1281,8 +1537,10 @@ function capacityPeopleHtml(capacityPct) {
 function applyHeight() {
   var h = window.innerHeight;
   var bannerEl = document.getElementById('loc-banner');
+  var headerEl = document.getElementById('map-header');
   var bannerH = (bannerEl && bannerEl.offsetHeight > 0) ? bannerEl.offsetHeight : 0;
-  var mapH = h - 44 - bannerH; // subtract map header + optional location banner
+  var headerH = (headerEl && headerEl.offsetHeight > 0) ? headerEl.offsetHeight : 44;
+  var mapH = h - headerH - bannerH;
   document.getElementById('app').style.height      = h + 'px';
   document.getElementById('ai-panel').style.height = h + 'px';
   document.getElementById('drag-handle').style.height = h + 'px';
@@ -1296,6 +1554,9 @@ function applyHeight() {
 }
 applyHeight();
 window.addEventListener('resize', applyHeight);
+window.addEventListener('resize', function() {
+  if (isTourActive()) renderTourStep();
+});
 
 if (!SHOW_AI_PANEL) {
   document.getElementById('ai-panel').style.display = 'none';
@@ -1317,6 +1578,8 @@ document.addEventListener('mouseup', function(){ dragging=false; handle.classLis
 
 // ── chat ─────────────────────────────────────────────────────────────────────
 var selectedStop = mapPayload.selected_stop;
+var hasUserSelectedStopManually = false;
+var hasAutoSelectedNearestStop = false;
 var chatHistory = Array.isArray(AI_CHAT_HISTORY) ? AI_CHAT_HISTORY.slice() : [];
 var userSchedule = null; // parsed schedule text extracted from uploaded image
 var userProfile = {
@@ -1329,6 +1592,158 @@ var userProfile = {
 
 function escapeHtml(text) {
   return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+var tourIndex = -1;
+var tourSteps = [
+  {
+    selector: '#route-side',
+    title: 'Start with the right panel',
+    body: function() {
+      return userLatLng
+        ? 'The first two prediction cards at the top are based on your current location, so they surface the best nearby boarding options first. Use them when you want the quickest next step without scanning the whole map.'
+        : 'Once you allow location access, the first two prediction cards at the top of this panel are based on your current location. They become your quickest way to see the best nearby boarding options.'
+    },
+    placement: 'left'
+  },
+  {
+    selector: '#map',
+    title: 'Use the map to pick another stop',
+    body: 'If you want a different stop, click that stop directly on the map. You can also use the route buttons at the bottom of the right panel to focus on one route, then click any stop along that line.',
+    placement: 'bottom'
+  },
+  {
+    selector: '#ai-panel',
+    title: 'Ask the AI for personalized help',
+    body: 'The AI panel on the left can answer personalized questions about timing, crowding, route choice, and what shuttle you should take right now. The suggestions update as your selected stop and location change.',
+    placement: 'right'
+  },
+  {
+    selector: '#profile-btn',
+    title: 'Add your habits in Profile',
+    body: 'Open Profile to add details like your name, timing style, crowding preference, and class schedule. The more context you add, the better the AI can tailor recommendations to your routine.',
+    placement: 'bottom'
+  }
+];
+
+function getTourStorageKey() {
+  return 'bc_shuttle_guided_tour_v1';
+}
+
+function isTourActive() {
+  return tourIndex >= 0;
+}
+
+function resolveTourStepBody(step) {
+  return typeof step.body === 'function' ? step.body() : step.body;
+}
+
+function getTourTarget(step) {
+  if (!step || !step.selector) return null;
+  return document.querySelector(step.selector);
+}
+
+function positionTourCard(targetRect, placement) {
+  var card = document.getElementById('tour-card');
+  var margin = 18;
+  var cardWidth = Math.min(360, window.innerWidth - 32);
+  card.style.width = cardWidth + 'px';
+  var cardHeight = card.offsetHeight || 220;
+  var left = targetRect.left;
+  var top = targetRect.bottom + margin;
+
+  if (placement === 'left') {
+    left = targetRect.left - cardWidth - margin;
+    top = targetRect.top;
+  } else if (placement === 'right') {
+    left = targetRect.right + margin;
+    top = targetRect.top;
+  } else if (placement === 'top') {
+    left = targetRect.left;
+    top = targetRect.top - cardHeight - margin;
+  }
+
+  if (left + cardWidth > window.innerWidth - 16) left = window.innerWidth - cardWidth - 16;
+  if (left < 16) left = 16;
+  if (top + cardHeight > window.innerHeight - 16) top = window.innerHeight - cardHeight - 16;
+  if (top < 16) top = 16;
+
+  card.style.left = left + 'px';
+  card.style.top = top + 'px';
+}
+
+function renderTourStep() {
+  if (!isTourActive()) return;
+  var step = tourSteps[tourIndex];
+  var target = getTourTarget(step);
+  if (!target) {
+    stopTour();
+    return;
+  }
+
+  var highlight = document.getElementById('tour-highlight');
+  var overlay = document.getElementById('tour-overlay');
+  var card = document.getElementById('tour-card');
+  var rect = target.getBoundingClientRect();
+  var padding = step.selector === '#profile-btn' ? 8 : 12;
+
+  overlay.classList.add('active');
+  highlight.classList.add('active');
+  card.classList.add('active');
+
+  highlight.style.left = Math.max(8, rect.left - padding) + 'px';
+  highlight.style.top = Math.max(8, rect.top - padding) + 'px';
+  highlight.style.width = Math.min(window.innerWidth - 16, rect.width + padding * 2) + 'px';
+  highlight.style.height = Math.min(window.innerHeight - 16, rect.height + padding * 2) + 'px';
+
+  document.getElementById('tour-step').textContent = 'Step ' + (tourIndex + 1) + ' of ' + tourSteps.length;
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-body').textContent = resolveTourStepBody(step);
+  document.getElementById('tour-back').style.visibility = tourIndex === 0 ? 'hidden' : 'visible';
+  document.getElementById('tour-next').textContent = tourIndex === tourSteps.length - 1 ? 'Finish' : 'Next';
+
+  positionTourCard(rect, step.placement || 'bottom');
+}
+
+function startTour(isManual) {
+  closeProfileModal();
+  if (!isManual) {
+    try {
+      if (localStorage.getItem(getTourStorageKey()) === 'done') return;
+    } catch (error) {
+      console.warn('Could not read guided-tour state', error);
+    }
+  }
+  tourIndex = 0;
+  renderTourStep();
+}
+
+function stopTour() {
+  tourIndex = -1;
+  document.getElementById('tour-overlay').classList.remove('active');
+  document.getElementById('tour-highlight').classList.remove('active');
+  document.getElementById('tour-card').classList.remove('active');
+  try {
+    localStorage.setItem(getTourStorageKey(), 'done');
+  } catch (error) {
+    console.warn('Could not persist guided-tour state', error);
+  }
+}
+
+function nextTourStep() {
+  if (!isTourActive()) return;
+  if (tourIndex >= tourSteps.length - 1) {
+    stopTour();
+    return;
+  }
+  tourIndex += 1;
+  renderTourStep();
+}
+
+function previousTourStep() {
+  if (!isTourActive() || tourIndex === 0) return;
+  tourIndex -= 1;
+  renderTourStep();
 }
 
 function personalizedIntro() {
@@ -1841,13 +2256,20 @@ function updateSelectedStopMarkers() {
   });
 }
 
-function onStopChange(name) {
+function onStopChange(name, options) {
+  options = options || {};
+  if (!name) return;
+  if (options.manual !== false) {
+    hasUserSelectedStopManually = true;
+  }
   selectedStop = name;
   document.getElementById('stop-sel').value = name;
   updateSelectedStopMarkers();
   renderStopCard();
   renderSuggestedQuestions();
-  leafletMap.setView(stopCoords(name), 14);
+  if (options.recenter !== false) {
+    leafletMap.setView(stopCoords(name), 14);
+  }
 }
 
 function buildContext() {
@@ -1910,12 +2332,35 @@ document.getElementById('send-btn').addEventListener('click', sendMessage);
 document.getElementById('user-inp').addEventListener('keydown', function(e){
   if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
+document.getElementById('tour-overlay').addEventListener('click', stopTour);
+document.addEventListener('keydown', function(e) {
+  if (!isTourActive()) return;
+  if (e.key === 'Escape') {
+    stopTour();
+  } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+    nextTourStep();
+  } else if (e.key === 'ArrowLeft') {
+    previousTourStep();
+  }
+});
 
 // ── theme toggle ──────────────────────────────────────────────────────────────
+function tileUrlForTheme(isLight) {
+  return isLight
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+}
+
+function syncMapTheme(isLight) {
+  if (!leafletMap || !baseTileLayer) return;
+  baseTileLayer.setUrl(tileUrlForTheme(isLight));
+}
+
 function toggleTheme() {
   var light = document.body.classList.toggle('light-mode');
   document.getElementById('theme-btn').textContent = light ? '🌙' : '☀️';
   localStorage.setItem('bc_shuttle_theme', light ? 'light' : 'dark');
+  syncMapTheme(light);
 }
 (function() {
   if (localStorage.getItem('bc_shuttle_theme') === 'light') {
@@ -2025,6 +2470,7 @@ renderSuggestedQuestions();
 document.getElementById('map-ts').textContent = 'Initialized at ' + INIT_TIME + ' · buses update in real time';
 
 var leafletMap;
+var baseTileLayer;
 var shuttles;
 var activeRoute = mapPayload.selected_route_filter && mapPayload.selected_route_filter !== 'All routes'
   ? mapPayload.selected_route_filter
@@ -2036,7 +2482,7 @@ var routeEntries = Object.entries(mapPayload.routes);
 leafletMap = L.map('map', {zoomControl:false, attributionControl:true})
   .setView([mapPayload.selected_coords.lat, mapPayload.selected_coords.lon], 14);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+baseTileLayer = L.tileLayer(tileUrlForTheme(document.body.classList.contains('light-mode')), {
   maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO'
 }).addTo(leafletMap);
 
@@ -2052,7 +2498,7 @@ routeEntries.forEach(function(entry) {
       fillColor:isSel?'#111827':route.color, fillOpacity:1
     }).addTo(leafletMap).bindPopup('<b>'+stop.name+'</b><br>'+routeName);
     marker.on('click', function() {
-      onStopChange(stop.name);
+      onStopChange(stop.name, {manual:true});
     });
     stopMarkers.push(marker);
     if (!stopMarkersByName[stop.name]) stopMarkersByName[stop.name] = [];
@@ -2205,6 +2651,20 @@ function onLocationSuccess(pos) {
   }
   updateLocationBanner(lat, lon);
   updateLocationRec();
+  var nearest = nearestStopToUser(lat, lon);
+  if (
+    nearest &&
+    nearest.stop &&
+    nearest.stop.name &&
+    !hasUserSelectedStopManually &&
+    !hasAutoSelectedNearestStop &&
+    nearest.stop.name !== selectedStop
+  ) {
+    onStopChange(nearest.stop.name, {manual:false, recenter:false});
+    hasAutoSelectedNearestStop = true;
+    showToast('Closest stop set to ' + nearest.stop.name, 'success');
+  }
+  if (isTourActive()) renderTourStep();
 }
 
 function onLocationError(err) {
@@ -2401,6 +2861,7 @@ renderStopCard();
 renderRouteCards();
 applyHeight();
 setTimeout(applyHeight, 200);
+setTimeout(function() { startTour(false); }, 700);
 requestAnimationFrame(animate);
 </script>
 </body>
