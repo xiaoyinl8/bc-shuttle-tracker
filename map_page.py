@@ -1127,6 +1127,21 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode .route-filter .route-action {color:#2563eb;}
   body.light-mode .route-filter.active .route-action {color:#1d4ed8;}
 
+  /* ── Stop context bar (AI panel, below stop selector) ───────────────── */
+  #stop-ctx {padding:9px 12px 10px;border-top:1px solid #334155;flex-shrink:0;
+    background:#0c2340;border-left:3px solid #3b82f6;}
+  #stop-ctx-name {font-size:13px;font-weight:900;color:#f1f5f9;letter-spacing:-.01em;}
+  #stop-ctx-rows {margin-top:5px;display:flex;flex-direction:column;gap:3px;}
+  .ctx-row {font-size:11px;color:#93c5fd;line-height:1.4;}
+  .ctx-eta-val {font-weight:900;color:#f1f5f9;font-size:15px;}
+  .ctx-cap-red {color:#ef4444;font-weight:700;}
+  .ctx-cap-yel {color:#f59e0b;font-weight:700;}
+  .ctx-cap-grn {color:#22c55e;font-weight:700;}
+  body.light-mode #stop-ctx {background:#dbeafe;border-left-color:#2563eb;border-top-color:#cbd5e1;}
+  body.light-mode #stop-ctx-name {color:#0f172a;}
+  body.light-mode .ctx-row {color:#1d4ed8;}
+  body.light-mode .ctx-eta-val {color:#0f172a;}
+
   /* ── You-are-here / geolocation ──────────────────────────────────────── */
   .user-dot {width:16px;height:16px;border-radius:50%;background:#3b82f6;
     border:2.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,.3);
@@ -1219,6 +1234,24 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);}
   .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
     padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
+  /* Stop-click hint strip */
+  #stop-click-hint {padding:10px 12px;font-size:11px;color:#64748b;line-height:1.5;
+    border-radius:10px;background:#0f172a;border:1px dashed #334155;margin-bottom:8px;}
+  #stop-click-hint b {color:#93c5fd;}
+  body.light-mode #stop-click-hint {background:#f8fafc;border-color:#cbd5e1;color:#475569;}
+  body.light-mode #stop-click-hint b {color:#1d4ed8;}
+  /* Selected-stop card header row with close button */
+  .stop-card-head {display:flex;align-items:flex-start;justify-content:space-between;gap:6px;}
+  #stop-close-btn {background:none;border:none;cursor:pointer;color:#64748b;font-size:15px;
+    line-height:1;padding:0;flex-shrink:0;margin-top:-1px;}
+  #stop-close-btn:hover {color:#f87171;}
+  body.light-mode #stop-close-btn {color:#94a3b8;}
+  body.light-mode #stop-close-btn:hover {color:#dc2626;}
+
+  /* Shuttle relevance highlighting when a stop is selected */
+  .bus-marker.relevant {box-shadow:0 0 0 5px rgba(250,204,21,.75),0 2px 8px rgba(0,0,0,.4);
+    transform:scale(1.12);transition:box-shadow .25s ease,transform .25s ease;}
+  .bus-marker.dim {opacity:0.28;transition:opacity .25s ease;}
   /* Location-based recommendation card */
   .loc-rec-best {background:#0a1f38 !important;}
   .loc-rec-badge {font-size:10px;font-weight:800;color:#60a5fa;margin-bottom:5px;letter-spacing:.04em;}
@@ -1313,6 +1346,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <select id="stop-sel" onchange="onStopChange(this.value)">STOP_OPTIONS_PLACEHOLDER</select>
       </div>
     </div>
+    <div id="stop-ctx">
+      <div id="stop-ctx-name">Loading…</div>
+      <div id="stop-ctx-rows"></div>
+    </div>
     <div id="profile-hint" onclick="openProfileModal()">
       <span class="ph-icon">👤</span>
       <span><b>Set up your Rider Profile</b> — personalized suggestions &amp; class schedule planning.</span>
@@ -1359,10 +1396,19 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       <div id="route-side">
         <h3 id="loc-rec-title" style="display:none;">Near You</h3>
         <div id="loc-rec" style="display:none;"></div>
-        <h3>Your Stop</h3>
-        <div class="card stop-card">
-          <div class="title" id="stop-title"></div>
-          <div class="body"  id="service-meta"></div>
+        <div id="stop-click-hint">
+          <b>Click any stop</b> on the map to see live arrivals &amp; capacity.<br>
+          Click the same stop again — or press <b>✕</b> — to close.
+        </div>
+        <div id="stop-section" style="display:none;">
+          <h3>Selected Stop</h3>
+          <div class="card stop-card">
+            <div class="stop-card-head">
+              <div class="title" id="stop-title"></div>
+              <button id="stop-close-btn" onclick="closeStopSection()" title="Close stop info">✕</button>
+            </div>
+            <div class="body" id="service-meta"></div>
+          </div>
         </div>
         <h3>Routes</h3>
         <div id="route-info"></div>
@@ -1580,6 +1626,7 @@ document.addEventListener('mouseup', function(){ dragging=false; handle.classLis
 var selectedStop = mapPayload.selected_stop;
 var hasUserSelectedStopManually = false;
 var hasAutoSelectedNearestStop = false;
+var stopSectionVisible = false; // hidden until user actively selects a stop
 var chatHistory = Array.isArray(AI_CHAT_HISTORY) ? AI_CHAT_HISTORY.slice() : [];
 var userSchedule = null; // parsed schedule text extracted from uploaded image
 var userProfile = {
@@ -2256,25 +2303,98 @@ function updateSelectedStopMarkers() {
   });
 }
 
+function capClass(pct) {
+  return pct >= 85 ? 'ctx-cap-red' : pct >= 60 ? 'ctx-cap-yel' : 'ctx-cap-grn';
+}
+
+function updateStopContextBar() {
+  var nameEl = document.getElementById('stop-ctx-name');
+  var rowsEl = document.getElementById('stop-ctx-rows');
+  if (!nameEl || !rowsEl) return;
+  nameEl.textContent = selectedStop;
+  var arrivals = arrivalsForStop(selectedStop);
+  if (!arrivals.length) {
+    rowsEl.innerHTML = '<div class="ctx-row">No buses currently approaching this stop.</div>';
+    return;
+  }
+  var html = '';
+  var next = arrivals[0];
+  html += '<div class="ctx-row">'
+    + 'Next: <span class="ctx-eta-val">' + next.etaMinutes + ' min</span>'
+    + ' &nbsp;·&nbsp; ' + escapeHtml(next.shuttle.label)
+    + '</div>';
+  html += '<div class="ctx-row">'
+    + 'Capacity: <span class="' + capClass(next.shuttle.capacity_pct) + '">'
+    + next.shuttle.capacity_pct + '%</span>'
+    + (next.shuttle.capacity_pct >= 85 ? ' · Very crowded'
+      : next.shuttle.capacity_pct >= 60 ? ' · Moderate' : ' · Light')
+    + '</div>';
+  if (arrivals.length > 1) {
+    var alt = arrivals[1];
+    html += '<div class="ctx-row" style="margin-top:2px;opacity:.8;">'
+      + 'Then: ' + alt.etaMinutes + ' min'
+      + ' (<span class="' + capClass(alt.shuttle.capacity_pct) + '">' + alt.shuttle.capacity_pct + '%</span>)'
+      + ' · ' + escapeHtml(alt.shuttle.label)
+      + '</div>';
+  }
+  rowsEl.innerHTML = html;
+}
+
+function highlightRelevantShuttles(stopName) {
+  // Mark each shuttle as relevant (serves this stop) or not
+  var relevantRoutes = {};
+  routeEntries.forEach(function(entry) {
+    if (entry[1].stop_progress[stopName] !== undefined) {
+      relevantRoutes[entry[0]] = true;
+    }
+  });
+  (shuttles || []).forEach(function(s) {
+    s._relevantForStop = !!relevantRoutes[s.route];
+    updateMarkerVisual(s); // apply immediately
+  });
+}
+
+function closeStopSection() {
+  stopSectionVisible = false;
+  renderStopCard();
+}
+
 function onStopChange(name, options) {
   options = options || {};
   if (!name) return;
+
+  var isSameStop = (name === selectedStop);
+
+  // Toggle: clicking the already-selected stop hides/shows the panel
+  if (isSameStop && options.manual !== false && (hasUserSelectedStopManually || hasAutoSelectedNearestStop)) {
+    stopSectionVisible = !stopSectionVisible;
+    renderStopCard();
+    return; // no re-fly or re-highlight needed
+  }
+
+  // New stop: always show the panel
+  stopSectionVisible = true;
   if (options.manual !== false) {
     hasUserSelectedStopManually = true;
   }
   selectedStop = name;
   document.getElementById('stop-sel').value = name;
   updateSelectedStopMarkers();
+  highlightRelevantShuttles(name);
   renderStopCard();
+  updateStopContextBar();
   renderSuggestedQuestions();
   if (options.recenter !== false) {
-    leafletMap.setView(stopCoords(name), 14);
+    leafletMap.flyTo(stopCoords(name), 15, {duration: 0.7, easeLinearity: 0.4});
   }
 }
 
 function buildContext() {
   var time = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-  var lines = ['Current time: '+time, '', '=== LIVE SHUTTLE STATUS ==='];
+  var lines = [
+    'The user is currently viewing stop: ' + selectedStop + '.',
+    'When giving directions or arrival info, assume they are physically at or heading to ' + selectedStop + ' unless they say otherwise.',
+    'Current time: ' + time, '', '=== LIVE SHUTTLE STATUS ==='];
   (shuttles||[]).forEach(function(s) {
     var d  = s.delay_minutes||0;
     var ds = d>0?' (+'+d+' min delay)':d<0?' (running early)':' (on time)';
@@ -2728,17 +2848,21 @@ function toggleRouteFilter(routeName) {
   applyRouteFilter();
   renderRouteCards();
   if (activeRoute) {
-    leafletMap.fitBounds(routeLayers[activeRoute].bounds, {padding:[24,24]});
+    leafletMap.flyToBounds(routeLayers[activeRoute].bounds, {padding:[24,24], duration:0.7});
   } else {
-    leafletMap.setView([mapPayload.selected_coords.lat, mapPayload.selected_coords.lon], 14);
+    leafletMap.flyTo(stopCoords(selectedStop), 15, {duration: 0.7, easeLinearity: 0.4});
   }
 }
 
 function updateMarkerVisual(s) {
   var route   = mapPayload.routes[s.route];
   var boarding = s.dwell_seconds_remaining > 0;
+  var relevanceCls = '';
+  if (s._relevantForStop !== undefined) {
+    relevanceCls = s._relevantForStop ? ' relevant' : ' dim';
+  }
   s.marker.setIcon(L.divIcon({className:'',
-    html:'<div class="bus-marker'+(boarding?' boarding':'')+'" style="background:'+route.color+';">🚌</div>',
+    html:'<div class="bus-marker'+(boarding?' boarding':'')+relevanceCls+'" style="background:'+route.color+';">🚌</div>',
     iconSize:[32,32], iconAnchor:[16,16]}));
   s.badge.setIcon(L.divIcon({className:'',
     html: boarding ? '<div class="boarding-pill">Boarding</div>' : '',
@@ -2799,40 +2923,81 @@ function animate(now) {
     refreshPopup(s);
   });
   renderStopCard();
-  // Refresh location-based recommendations every ~3 s (≈180 frames at 60 fps)
+  // Refresh stop context bar and location recs every ~3 s (≈180 frames at 60 fps)
   _locRecFrame++;
-  if (_locRecFrame % 180 === 0) { updateLocationRec(); }
+  if (_locRecFrame % 180 === 0) {
+    updateStopContextBar();
+    updateLocationRec();
+  }
   requestAnimationFrame(animate);
 }
 
 function renderStopCard() {
+  var show = stopSectionVisible && (hasUserSelectedStopManually || hasAutoSelectedNearestStop);
+  var sectionEl = document.getElementById('stop-section');
+  var hintEl    = document.getElementById('stop-click-hint');
+  if (sectionEl) sectionEl.style.display = show ? 'block' : 'none';
+  if (hintEl)    hintEl.style.display    = show ? 'none'  : 'block';
+  if (!show) return;
+
   var stopRoutes = routeNamesForStop(selectedStop);
   var arrivals = arrivalsForStop(selectedStop);
-  var nextArrival = arrivals.length ? arrivals[0] : null;
   document.getElementById('stop-title').textContent = selectedStop;
-  document.getElementById('service-meta').innerHTML =
-    '<div class="stop-routes">' +
+
+  var routePills = '<div class="stop-routes">' +
     stopRoutes.map(function(routeName) {
       var route = mapPayload.routes[routeName];
       return '<span class="stop-route-pill" style="background:'+route.color+';">'+routeName+'</span>';
     }).join('') +
-    '</div>' +
-    (nextArrival
-      ? '<div class="stop-metric">' +
-          '<div class="stop-metric-label">Next Bus</div>' +
-          '<div class="stop-metric-value">'+nextArrival.etaMinutes+' min</div>' +
-          '<div class="stop-metric-detail">'+nextArrival.shuttle.label+' on <span class="stop-inline-route">'+nextArrival.shuttle.route+'</span></div>' +
-        '</div>' +
-        '<div class="stop-metric">' +
-          '<div class="stop-metric-label">Current Capacity</div>' +
-          '<div class="stop-capacity-badge">'+nextArrival.shuttle.capacity+' · '+nextArrival.shuttle.capacity_pct+'%</div>' +
-          capacityPeopleHtml(nextArrival.shuttle.capacity_pct) +
-        '</div>'
-      : '<div class="stop-metric">' +
-          '<div class="stop-metric-label">Next Bus</div>' +
-          '<div class="stop-metric-value">No live bus</div>' +
-          '<div class="stop-metric-detail">No shuttle on the selected route is currently approaching this stop.</div>' +
-        '</div>');
+    '</div>';
+
+  var arrivalsHtml = '';
+  if (!arrivals.length) {
+    arrivalsHtml = '<div class="stop-metric">' +
+      '<div class="stop-metric-label">Upcoming Buses</div>' +
+      '<div class="stop-metric-value">No live bus</div>' +
+      '<div class="stop-metric-detail">No shuttle is currently approaching this stop.</div>' +
+      '</div>';
+  } else {
+    arrivalsHtml = '<div class="stop-metric"><div class="stop-metric-label">Upcoming Buses</div></div>';
+    arrivals.slice(0, 3).forEach(function(arrival, idx) {
+      var s = arrival.shuttle;
+      var route = mapPayload.routes[s.route];
+      var capPct = s.capacity_pct;
+      var capColor = capPct >= 85 ? '#ef4444' : capPct >= 60 ? '#f59e0b' : '#22c55e';
+      var delayBadge = s.delay_minutes > 0
+        ? '<span style="color:#ef4444;font-size:9px;font-weight:800;margin-left:4px;">+'+s.delay_minutes+'m late</span>'
+        : s.delay_minutes < 0
+          ? '<span style="color:#22c55e;font-size:9px;font-weight:800;margin-left:4px;">'+Math.abs(s.delay_minutes)+'m early</span>'
+          : '';
+      var expressBadge = s.is_express
+        ? '<span style="color:#7c3aed;font-size:9px;font-weight:800;margin-left:4px;">🚀 Express</span>'
+        : '';
+      arrivalsHtml += '<div style="margin-top:' + (idx === 0 ? '8' : '10') + 'px;padding-top:' + (idx === 0 ? '0' : '8') + 'px;'
+        + (idx > 0 ? 'border-top:1px solid rgba(148,163,184,.15);' : '') + '">';
+      // ETA + route chip
+      arrivalsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">';
+      arrivalsHtml += '<div>';
+      arrivalsHtml += '<span class="stop-metric-value" style="font-size:' + (idx === 0 ? '22' : '16') + 'px;">'
+        + arrival.etaMinutes + ' min</span>';
+      arrivalsHtml += delayBadge + expressBadge;
+      arrivalsHtml += '</div>';
+      arrivalsHtml += '<span class="stop-route-pill" style="background:'+route.color+';font-size:9px;">'+s.route+'</span>';
+      arrivalsHtml += '</div>';
+      // Bus label
+      arrivalsHtml += '<div class="stop-metric-detail" style="margin-top:3px;">' + escapeHtml(s.label) + '</div>';
+      // Capacity row
+      arrivalsHtml += '<div style="display:flex;align-items:center;gap:8px;margin-top:5px;">';
+      arrivalsHtml += capacityPeopleHtml(capPct);
+      arrivalsHtml += '<div class="stop-capacity-badge" style="border:1px solid rgba(148,163,184,.2);">'
+        + '<span style="color:'+capColor+';font-weight:900;">'+capPct+'%</span>'
+        + '&nbsp;·&nbsp;' + escapeHtml(s.capacity) + '</div>';
+      arrivalsHtml += '</div>';
+      arrivalsHtml += '</div>';
+    });
+  }
+
+  document.getElementById('service-meta').innerHTML = routePills + arrivalsHtml;
 }
 
 function renderRouteCards() {
@@ -2856,8 +3021,10 @@ function renderRouteCards() {
 
 shuttles.forEach(function(s){ updateMarkerVisual(s); refreshPopup(s); });
 updateSelectedStopMarkers();
+highlightRelevantShuttles(selectedStop);
 applyRouteFilter();
 renderStopCard();
+updateStopContextBar();
 renderRouteCards();
 applyHeight();
 setTimeout(applyHeight, 200);
