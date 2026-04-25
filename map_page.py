@@ -50,15 +50,20 @@ def show_onboarding() -> None:
           max-width: 100% !important;
           padding: 0 !important;
         }
+        @keyframes gradientShift {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
         .welcome-shell {
           min-height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 20px 24px 96px;
-          background:
-            radial-gradient(circle at top left, rgba(59,130,246,0.18), transparent 32%),
-            linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+          background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 35%, #e8f0fe 65%, #f0f9ff 100%);
+          background-size: 300% 300%;
+          animation: gradientShift 10s ease infinite;
         }
         .welcome-card {
           width: min(1120px, 100%);
@@ -331,7 +336,7 @@ def _capacity_visual_html(capacity_pct: int) -> str:
     return (
         f'<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:0.9rem;">'
         f'<div style="display:flex;align-items:flex-end;">'
-        f'<img src="{svg_src}" alt="{_capacity_label(capacity_pct)} crowd graphic" style="width:125px;height:40px;display:block;" />'
+        f'<img src="{svg_src}" alt="{_capacity_label(capacity_pct)} crowd graphic" class="capacity-anim" style="width:125px;height:40px;display:block;" />'
         f"</div>"
         f'<div>'
         f'<div style="font-size:1.1rem;font-weight:700;color:{filled};">{_capacity_label(capacity_pct)}</div>'
@@ -357,12 +362,12 @@ def render_arrival_schedule(selected_stop: str) -> None:
     if best:
         delay = best.get("delay_minutes", 0)
         if delay > 0:
-            delay_badge = f'<span style="background:#fef2f2;color:#dc2626;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">⚠️ +{delay} min delay</span>'
+            delay_badge = f'<span style="background:#fef2f2;color:#b91c1c;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;border:1px solid #fecaca;">⚠️ +{delay} min delay</span>'
         elif delay < 0:
-            delay_badge = f'<span style="background:#f0fdf4;color:#16a34a;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">⏰ Running {abs(delay)} min early</span>'
+            delay_badge = f'<span style="background:#f0fdf4;color:#15803d;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;border:1px solid #bbf7d0;">⏰ Running {abs(delay)} min early</span>'
         else:
-            delay_badge = '<span style="background:#f0fdf4;color:#16a34a;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">✅ On time</span>'
-        express_badge = '<span style="background:#f5f3ff;color:#7c3aed;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;">🚀 Express</span>' if best.get("is_express") else ""
+            delay_badge = '<span style="background:#f0fdf4;color:#15803d;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;border:1px solid #bbf7d0;">✅ On time</span>'
+        express_badge = '<span style="background:#f5f3ff;color:#6d28d9;font-weight:700;padding:2px 10px;border-radius:999px;font-size:0.85rem;border:1px solid #ddd6fe;">🚀 Express</span>' if best.get("is_express") else ""
         st.markdown("### Next Shuttle")
         st.markdown(
             f"""
@@ -389,12 +394,12 @@ def render_arrival_schedule(selected_stop: str) -> None:
         )
         delay = arrival.get("delay_minutes", 0)
         if delay > 0:
-            arrival_delay_badge = f'<span style="color:#dc2626;font-weight:700;font-size:0.8rem;">⚠️ +{delay} min delay</span>'
+            arrival_delay_badge = f'<span style="background:#fef2f2;color:#b91c1c;font-weight:700;font-size:0.8rem;padding:1px 8px;border-radius:999px;border:1px solid #fecaca;">⚠️ +{delay} min delay</span>'
         elif delay < 0:
-            arrival_delay_badge = f'<span style="color:#16a34a;font-weight:700;font-size:0.8rem;">⏰ {abs(delay)} min early</span>'
+            arrival_delay_badge = f'<span style="background:#f0fdf4;color:#15803d;font-weight:700;font-size:0.8rem;padding:1px 8px;border-radius:999px;border:1px solid #bbf7d0;">⏰ {abs(delay)} min early</span>'
         else:
             arrival_delay_badge = ""
-        arrival_express_badge = '<span style="color:#7c3aed;font-weight:700;font-size:0.8rem;">🚀 Express</span>' if arrival.get("is_express") else ""
+        arrival_express_badge = '<span style="background:#f5f3ff;color:#6d28d9;font-weight:700;font-size:0.8rem;padding:1px 8px;border-radius:999px;border:1px solid #ddd6fe;">🚀 Express</span>' if arrival.get("is_express") else ""
         badges_html = " &nbsp;".join(b for b in [arrival_delay_badge, arrival_express_badge] if b)
         badges_div = f'<div style="margin-top:0.3rem;">{badges_html}</div>' if badges_html else ""
         card_html = (
@@ -939,11 +944,13 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
 <html>
 <head>
 <meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   * {box-sizing:border-box;margin:0;padding:0;}
   html,body {height:100%;overflow:hidden;background:#0f172a;color:#f1f5f9;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
   #app {display:flex;width:100%;overflow:hidden;}
 
   /* AI panel */
@@ -1015,8 +1022,9 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #profile-name {font-size:12px;font-weight:700;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   #profile-modal-backdrop {position:fixed;inset:0;background:rgba(15,23,42,.48);display:none;align-items:flex-start;justify-content:flex-end;z-index:1400;}
   #profile-modal-backdrop.open {display:flex;}
-  #profile-modal {width:min(360px, calc(100vw - 24px));margin:60px 14px 0 0;background:#ffffff;color:#0f172a;border-radius:20px;
-    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;border:1px solid #dbeafe;}
+  #profile-modal {width:min(360px, calc(100vw - 24px));margin:60px 14px 0 0;background:rgba(255,255,255,0.92);color:#0f172a;border-radius:20px;
+    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;border:1px solid rgba(191,219,254,0.8);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
   .profile-head {padding:16px 18px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
   .profile-head h3 {font-size:18px;font-weight:900;letter-spacing:-.02em;}
   .profile-head p {font-size:12px;color:#64748b;line-height:1.45;margin-top:4px;}
@@ -1118,7 +1126,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #map-header span {color:#64748b;}
   body.light-mode #route-side {background:#f8fafc;color:#0f172a;border-left-color:#cbd5e1;}
   body.light-mode #route-side h3 {color:#0f172a;}
-  body.light-mode .card {background:#ffffff;border-left-color:#cbd5e1;}
+  body.light-mode .card {background:#ffffff;border-image:linear-gradient(180deg,#2563eb,#7c3aed) 1;}
   body.light-mode .card .title {color:#0f172a;}
   body.light-mode .card .body {color:#475569;}
   body.light-mode .stop-metric-value {color:#0f172a;}
@@ -1128,7 +1136,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode .stop-inline-route {color:#1d4ed8;}
   body.light-mode .route-filter {box-shadow:0 2px 8px rgba(0,0,0,.08);}
   body.light-mode .route-filter:hover {box-shadow:0 8px 20px rgba(0,0,0,.12);}
-  body.light-mode .route-filter.active {background:#dbeafe;}
+  body.light-mode .route-filter.active {background:#dbeafe;box-shadow:0 0 0 3px rgba(37,99,235,.3),0 6px 20px rgba(37,99,235,.12);}
   body.light-mode .route-filter .route-title {color:#64748b;}
   body.light-mode .route-filter .route-stops {color:#1e293b;}
   body.light-mode .route-filter .route-action {color:#2563eb;}
@@ -1198,7 +1206,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     font-family:sans-serif;font-size:12px;color:#f1f5f9;border-left:1px solid #334155;}
   #route-side h3 {font-size:14px;margin:8px 0 6px;color:#f1f5f9;font-weight:800;letter-spacing:-.01em;}
   .card       {background:#0f172a;border-radius:14px;padding:14px 14px 13px;margin-bottom:10px;
-    border-left:4px solid #334155;}
+    border-left:4px solid;border-image:linear-gradient(180deg,#3b82f6,#7c3aed) 1;}
   .card .title{font-weight:700;font-size:12px;color:#f1f5f9;}
   .card .body {color:#94a3b8;margin-top:3px;font-size:11px;line-height:1.4;}
   .stop-card {padding:14px 14px 12px;}
@@ -1213,7 +1221,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .stop-capacity-badge {display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;
     background:#1e3a5f;color:#93c5fd;font-size:10px;font-weight:800;}
   .capacity-people {display:flex;gap:5px;align-items:flex-end;margin-top:10px;margin-bottom:8px;flex-wrap:wrap;}
-  .capacity-person {position:relative;width:8px;height:20px;opacity:.26;}
+  .capacity-person {position:relative;width:8px;height:20px;opacity:.26;transition:opacity .4s ease;}
   .capacity-person.active {opacity:1;}
   .capacity-person::before {content:'';position:absolute;left:1px;top:0;width:6px;height:6px;border-radius:50%;background:currentColor;}
   .capacity-person::after {content:'';position:absolute;left:2px;top:7px;width:4px;height:11px;border-radius:3px;background:currentColor;box-shadow:-3px 2px 0 0 currentColor,3px 2px 0 0 currentColor,-2px 10px 0 0 currentColor,2px 10px 0 0 currentColor;}
@@ -1226,7 +1234,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     border-left-width:4px;border-left-style:solid;border-top:none;border-right:none;border-bottom:none;box-shadow:0 4px 12px rgba(0,0,0,.3);}
   .route-filter:hover {transform:translateY(-2px);box-shadow:0 10px 24px rgba(0,0,0,.4);}
   .route-filter:focus-visible {outline:none;box-shadow:0 0 0 3px rgba(59,130,246,.4);}
-  .route-filter.active {background:#1e3a5f;box-shadow:0 0 0 2px rgba(59,130,246,.4);}
+  .route-filter.active {background:#1e3a5f;box-shadow:0 0 0 3px rgba(59,130,246,.55),0 6px 20px rgba(59,130,246,.2);}
   .route-filter .route-top {display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
   .route-filter .route-title {font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;}
   .route-filter .route-stops {margin-top:10px;font-size:13px;font-weight:700;color:#e2e8f0;line-height:1.45;}
@@ -1238,10 +1246,20 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .bus-marker {width:32px;height:32px;border-radius:50%;border:3px solid #fff;
     box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;
     justify-content:center;font-size:16px;}
-  .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);}
-  /* Per-route icon colors — CSS class beats any stale inline style */
-  .bus-color-comm   { background-color: #1d4ed8 !important; }
-  .bus-color-newton { background-color: #8b0000 !important; }
+  .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);animation:none;}
+  /* Per-route icon colors + pulse animations */
+  @keyframes bus-pulse-comm {
+    0%   {box-shadow:0 0 0 0 rgba(29,78,216,.55),0 2px 6px rgba(0,0,0,.3);}
+    70%  {box-shadow:0 0 0 10px rgba(29,78,216,0),0 2px 6px rgba(0,0,0,.3);}
+    100% {box-shadow:0 0 0 0 rgba(29,78,216,0),0 2px 6px rgba(0,0,0,.3);}
+  }
+  @keyframes bus-pulse-newton {
+    0%   {box-shadow:0 0 0 0 rgba(139,0,0,.55),0 2px 6px rgba(0,0,0,.3);}
+    70%  {box-shadow:0 0 0 10px rgba(139,0,0,0),0 2px 6px rgba(0,0,0,.3);}
+    100% {box-shadow:0 0 0 0 rgba(139,0,0,0),0 2px 6px rgba(0,0,0,.3);}
+  }
+  .bus-color-comm   { background-color: #1d4ed8 !important; animation: bus-pulse-comm 1.8s infinite; }
+  .bus-color-newton { background-color: #8b0000 !important; animation: bus-pulse-newton 1.8s infinite; }
   .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
     padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
   /* Stop-click hint strip */
@@ -1260,7 +1278,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
 
   /* Shuttle relevance highlighting when a stop is selected */
   .bus-marker.relevant {box-shadow:0 0 0 5px rgba(250,204,21,.75),0 2px 8px rgba(0,0,0,.4);
-    transform:scale(1.12);transition:box-shadow .25s ease,transform .25s ease;}
+    transform:scale(1.12);transition:box-shadow .25s ease,transform .25s ease;animation:none;}
   .bus-marker.dim {opacity:0.45;transition:opacity .25s ease;}
   /* Location-based recommendation card */
   .loc-rec-best {background:#0a1f38 !important;}

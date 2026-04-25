@@ -9,6 +9,13 @@ def apply_shared_styles() -> None:
     st.markdown(
         """
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        html, body, [class*="css"] {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        }
+        #MainMenu, footer, .stDeployButton { visibility: hidden !important; }
+        [data-testid="stToolbar"] { display: none !important; }
+        header { background: transparent !important; }
         .stButton>button {
             width: 100%;
             border-radius: 8px;
@@ -20,6 +27,8 @@ def apply_shared_styles() -> None:
             border-radius: 14px;
             padding: 1rem;
             margin-bottom: 1rem;
+            border-left: 4px solid #1d4ed8;
+            box-shadow: 0 2px 8px rgba(29,78,216,0.07);
         }
         .mini-route-chip {
             display: inline-block;
@@ -30,6 +39,13 @@ def apply_shared_styles() -> None:
             font-weight: 700;
             margin-right: 0.4rem;
             margin-bottom: 0.4rem;
+        }
+        @keyframes capacity-fade-in {
+            from { opacity: 0; transform: translateY(4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .capacity-anim {
+            animation: capacity-fade-in 0.4s ease;
         }
     </style>
     """,
