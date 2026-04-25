@@ -8,7 +8,7 @@ import streamlit as st
 
 SIMULATION_TIME_SCALE = 1.0
 STOP_PROXIMITY_THRESHOLD = 0.012
-SIMULATION_VERSION = "boarding-seed-v3"
+SIMULATION_VERSION = "boarding-seed-v4"
 
 
 BC_ROUTES = {
@@ -109,7 +109,8 @@ BC_ROUTES = {
     },
 
     "Newton Campus Express": {
-        "color": "#8B4513",
+        "color": "#8B4513",         # route line stays dark red/brown
+        "marker_color": "#8B4513",  # shuttle icon — same dark red as the route
         "service_days": "Weekdays",
         "service_window": "All Day",
         "headway": "Every 15 - 20 Minutes",
@@ -201,39 +202,54 @@ BC_ROUTES = {
 
 
 DEFAULT_SHUTTLES = {
+    # ── Comm Ave All Stops ────────────────────────────────────────────────────
+    # Three buses evenly spaced (~33 % apart) around the loop so riders never
+    # wait more than ~10–13 min, matching the posted 10–15 min headway.
     "comm-1": {
         "label": "Comm Ave 1",
         "route": "Comm Ave All Stops",
-        "progress": 0.0,
-        "speed_mph": 11,
-        "capacity_pct": 58,
+        "progress": 0.04,          # near Conte Forum, just boarded
+        "speed_mph": 11,            # typical urban crawl through campus
+        "capacity_pct": 74,         # busy evening run
         "on_time": True,
-        "dwell_seconds_remaining": 45,
+        "dwell_seconds_remaining": 30,  # still boarding at Conte Forum
     },
     "comm-2": {
         "label": "Comm Ave 2",
         "route": "Comm Ave All Stops",
-        "progress": 0.56,
-        "speed_mph": 10,
-        "capacity_pct": 81,
+        "progress": 0.38,          # mid-route near Chestnut Hill / Reservoir area
+        "speed_mph": 12,            # slightly faster stretch away from campus core
+        "capacity_pct": 88,         # packed — heading back toward main campus
         "on_time": True,
         "dwell_seconds_remaining": 0,
     },
+    "comm-3": {
+        "label": "Comm Ave 3",
+        "route": "Comm Ave All Stops",
+        "progress": 0.70,          # two-thirds through, near Greycliff / South St.
+        "speed_mph": 10,            # slower, heavier traffic near Comm Ave corridor
+        "capacity_pct": 52,         # moderate — passengers have thinned out
+        "on_time": True,
+        "dwell_seconds_remaining": 0,
+    },
+    # ── Newton Campus Express ─────────────────────────────────────────────────
+    # Two buses offset by ~half the loop so one is always outbound and one
+    # inbound, giving ~15–18 min effective headway each direction.
     "newton-1": {
         "label": "Newton Express 1",
         "route": "Newton Campus Express",
-        "progress": 0.0,
-        "speed_mph": 15,
-        "capacity_pct": 40,
+        "progress": 0.06,          # just departed Newton Stuart Hall
+        "speed_mph": 17,            # faster on the open Newton stretch of Comm Ave
+        "capacity_pct": 62,         # good load for a mid-day express
         "on_time": True,
-        "dwell_seconds_remaining": 0,
+        "dwell_seconds_remaining": 20,  # finishing dwell at Newton – Main Gate
     },
     "newton-2": {
         "label": "Newton Express 2",
         "route": "Newton Campus Express",
-        "progress": 0.5,
-        "speed_mph": 14,
-        "capacity_pct": 25,
+        "progress": 0.52,          # inbound, approaching main campus
+        "speed_mph": 14,            # slower in campus-side traffic
+        "capacity_pct": 38,         # lighter — picked up at Newton, many already off
         "on_time": True,
         "dwell_seconds_remaining": 0,
     },
@@ -337,11 +353,68 @@ def display_stop_name(stop_name: str) -> str:
 
 
 def _stop_dwell_seconds(stop_name: str) -> int:
-    if stop_name.startswith(("A.", "G.", "M.")):
+    """Return realistic dwell time based on how busy the stop is."""
+    base = stop_name.replace(" (boarding)", "").strip()
+    # High-traffic hubs: full boarding cycle
+    if base in {
+        "Conte Forum",
+        "McElroy – Beacon St.",
+        "Newton – Stuart Hall",
+        "Reservoir MBTA Stop",
+    }:
         return 35
-    if stop_name.startswith(("D.", "J.")):
-        return 25
-    return 18
+    # Medium stops: moderate passenger exchange
+    if base in {
+        "College Road",
+        "Chestnut Hill – Main Gate",
+        "Robsham Theater",
+        "Newton – Main Gate",
+        "Newton – Duchesne",
+        "2000 Commonwealth Ave.",
+    }:
+        return 22
+    # All other stops: quick pass-through
+    return 12
+
+
+# Net capacity change (percentage points) when a shuttle completes boarding at a stop.
+# Positive = more passengers board than alight; negative = more alight than board.
+#
+# Loop structure for Comm Ave All Stops (evening service):
+#   OUTBOUND leg: Conte Forum → McElroy → College Rd → … → 2000 Comm Ave → Reservoir
+#     Students leave campus (board at Conte/McElroy), alight at residential stops.
+#   INBOUND return leg: Reservoir → B.O.A / Cleveland Circle → … → South St → Greycliff → Robsham → Conte Forum
+#     Students board at every stop heading back to campus, then all alight at Conte Forum.
+#
+# Deltas are balanced so the net sum per full loop ≈ 0 (stable steady-state capacity).
+STOP_CAPACITY_DELTA: dict[str, int] = {
+    # == Conte Forum — end of inbound trip / start of outbound ==
+    # Heavy alighting (everyone arriving for class) outweighs new outbound boarding.
+    "Conte Forum": -35,
+
+    # == Outbound leg: students heading home ==
+    "McElroy – Beacon St.": +8,       # campus-adjacent, many students hop on to go home
+    "College Road": +5,               # moderate outbound boarding
+    "Chestnut Hill – Main Gate": +2,  # light boarding
+    "Evergreen Cemetery": -5,         # residential, alighting begins
+    "2000 Commonwealth Ave.": -8,     # significant alighting (residential area)
+    "Reservoir MBTA Stop": -7,        # major stop: many alight to connect to T; slight boarding from T riders
+
+    # == Inbound return leg: students heading to campus ==
+    # Cleveland Circle / Chestnut Hill Ave corridor — first major boarding cluster
+    "B.O.A – Chestnut Hill Ave.": +4,
+    "Chiswick Rd.": +4,
+    "Corner of Comm. Ave / Chestnut Hill Ave.": +4,
+    # Dorm / residential corridor — primary inbound boarding
+    "South Street": +10,              # students living near campus boarding for class
+    "Greycliff Hall": +13,            # heavy boarding: large dorm area
+    "Robsham Theater": +5,            # boarding as shuttle approaches campus
+
+    # Newton Campus Express
+    "Newton – Stuart Hall": +22,      # Newton terminus, heavy boarding
+    "Newton – Main Gate": +10,
+    "Newton – Duchesne": +8,
+}
 
 
 def initialize_simulation_state() -> None:
@@ -509,6 +582,9 @@ def update_shuttle_positions(advance: bool = True) -> None:
                         st.session_state.route_definitions[shuttle["route"]]["metrics"]["stop_progress"][next_stop_name]
                     )
                     shuttle["dwell_seconds_remaining"] = _stop_dwell_seconds(next_stop_name)
+                    # Apply boarding/alighting: capacity changes as passengers get on/off
+                    delta = STOP_CAPACITY_DELTA.get(next_stop_name, 0)
+                    shuttle["capacity_pct"] = max(5, min(95, shuttle["capacity_pct"] + delta))
                 else:
                     shuttle["progress"] = (shuttle["progress"] + distance_fraction) % 1.0
 

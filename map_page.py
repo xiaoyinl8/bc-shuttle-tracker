@@ -7,6 +7,7 @@ import streamlit.components.v1 as components
 from ai_assistant import ensure_ai_state
 from interaction_ui import apply_shared_styles
 from shuttle_simulation import (
+    STOP_CAPACITY_DELTA,
     build_eta_prediction,
     display_stop_name,
     get_stop_arrivals,
@@ -244,6 +245,7 @@ def build_map_payload(selected_stop: str) -> dict:
         )
         routes[route_name] = {
             "color": route["color"],
+            "marker_color": route.get("marker_color", route["color"]),
             "path": route["path"],
             "stops": route["stops"],
             "segment_lengths": route["metrics"]["segment_lengths"],
@@ -258,6 +260,7 @@ def build_map_payload(selected_stop: str) -> dict:
 
     shuttles = []
     for shuttle_id, shuttle in st.session_state.shuttle_data.items():
+        route_def = st.session_state.route_definitions[shuttle["route"]]
         shuttles.append(
             {
                 "id": shuttle_id,
@@ -272,6 +275,8 @@ def build_map_payload(selected_stop: str) -> dict:
                 "dwell_seconds_remaining": shuttle.get("dwell_seconds_remaining", 0.0),
                 "delay_minutes": shuttle.get("delay_minutes", 0),
                 "is_express": shuttle.get("is_express", False),
+                # Embed marker color directly so JS never needs a route lookup
+                "marker_color": route_def.get("marker_color", route_def["color"]),
             }
         )
 
@@ -670,7 +675,7 @@ def render_live_dashboard(selected_stop: str) -> None:
           const marker = L.marker(positionAtProgress(route, shuttle.progress), {{
             icon: L.divIcon({{
               className: '',
-              html: `<div class="bus-marker" style="background:${{route.color}};">🚌</div>`,
+              html: `<div class="bus-marker ${{shuttle.route==='Newton Campus Express'?'bus-color-newton':'bus-color-comm'}}">🚌</div>`,
               iconSize: [34, 34],
               iconAnchor: [17, 17]
             }})
@@ -724,7 +729,7 @@ def render_live_dashboard(selected_stop: str) -> None:
           const boarding = shuttle.dwell_seconds_remaining > 0;
           shuttle.marker.setIcon(L.divIcon({{
             className: '',
-            html: `<div class="bus-marker ${{boarding ? 'boarding' : ''}}" style="background:${{route.color}};">🚌</div>`,
+            html: `<div class="bus-marker ${{shuttle.route==='Newton Campus Express'?'bus-color-newton':'bus-color-comm'}} ${{boarding ? 'boarding' : ''}}">🚌</div>`,
             iconSize: [34, 34],
             iconAnchor: [17, 17]
           }}));
@@ -912,11 +917,13 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         for name in sorted(st.session_state.stops.keys())
     )
 
+    stop_cap_delta_json = json.dumps(STOP_CAPACITY_DELTA)
     # Data-only f-string — just numbers and pre-validated JSON blobs
     data_script = (
         f"<script>"
         f"var TOTAL_H={TOTAL_H};"
         f"var mapPayload={payload_json};"
+        f"var STOP_CAP_DELTA={stop_cap_delta_json};"
         f"var SYSTEM_PROMPT={system_prompt_json};"
         f"var INIT_TIME={init_time};"
         f"var AI_SERVER_CONFIGURED={ai_server_configured};"
@@ -1232,6 +1239,9 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;
     justify-content:center;font-size:16px;}
   .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);}
+  /* Per-route icon colors — CSS class beats any stale inline style */
+  .bus-color-comm   { background-color: #1d4ed8 !important; }
+  .bus-color-newton { background-color: #8b0000 !important; }
   .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
     padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
   /* Stop-click hint strip */
@@ -1251,7 +1261,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   /* Shuttle relevance highlighting when a stop is selected */
   .bus-marker.relevant {box-shadow:0 0 0 5px rgba(250,204,21,.75),0 2px 8px rgba(0,0,0,.4);
     transform:scale(1.12);transition:box-shadow .25s ease,transform .25s ease;}
-  .bus-marker.dim {opacity:0.28;transition:opacity .25s ease;}
+  .bus-marker.dim {opacity:0.45;transition:opacity .25s ease;}
   /* Location-based recommendation card */
   .loc-rec-best {background:#0a1f38 !important;}
   .loc-rec-badge {font-size:10px;font-weight:800;color:#60a5fa;margin-bottom:5px;letter-spacing:.04em;}
@@ -1540,6 +1550,25 @@ function stopDwell(name) {
   if (name.charAt(0)==='D'||name.charAt(0)==='J') return 25;
   return 18;
 }
+function projectedCapacityAtStop(shuttle, stopName) {
+  var route = mapPayload.routes[shuttle.route];
+  var targetProg = route.stop_progress[stopName];
+  if (targetProg === undefined) return shuttle.capacity_pct;
+  var deltaToTarget = (targetProg - shuttle.progress + 1) % 1;
+  var projected = shuttle.capacity_pct;
+  // Accumulate capacity changes for every stop the shuttle passes through
+  // BEFORE reaching the target stop (excludes the target itself so we show
+  // capacity as the bus arrives — before riders at that stop board/alight).
+  Object.entries(route.stop_progress).forEach(function(entry) {
+    var sName = entry[0], sProg = entry[1];
+    var deltaToStop = (sProg - shuttle.progress + 1) % 1;
+    if (deltaToStop > 0.001 && deltaToStop < deltaToTarget - 0.001) {
+      projected += (STOP_CAP_DELTA[sName] || 0);
+    }
+  });
+  return Math.max(5, Math.min(95, Math.round(projected)));
+}
+
 function arrivalsForStop(stopName) {
   return (shuttles||[])
     .filter(function(s){ return mapPayload.routes[s.route].stop_progress[stopName] !== undefined; })
@@ -1549,7 +1578,13 @@ function arrivalsForStop(stopName) {
       var delta = (sp - s.progress + 1) % 1;
       var miles = delta * route.total_length;
       var eta   = Math.max(1, Math.round(miles / Math.max(s.speed_mph,1) * 60));
-      return {shuttle:s, etaMinutes: Math.max(1, eta + (s.delay_minutes||0))};
+      // Project capacity accounting for boarding/alighting at intermediate stops
+      var projCap = projectedCapacityAtStop(s, stopName);
+      var shuttleAtStop = Object.assign({}, s, {
+        capacity_pct: projCap,
+        capacity: projCap >= 85 ? 'Full' : projCap >= 60 ? 'Medium' : 'Empty'
+      });
+      return {shuttle: shuttleAtStop, etaMinutes: Math.max(1, eta + (s.delay_minutes||0))};
     })
     .sort(function(a,b){ return a.etaMinutes - b.etaMinutes; });
 }
@@ -2303,6 +2338,11 @@ function updateSelectedStopMarkers() {
   });
 }
 
+function busColorClass(routeName) {
+  if (routeName === 'Newton Campus Express') return 'bus-color-newton';
+  return 'bus-color-comm';
+}
+
 function capClass(pct) {
   return pct >= 85 ? 'ctx-cap-red' : pct >= 60 ? 'ctx-cap-yel' : 'ctx-cap-grn';
 }
@@ -2424,15 +2464,28 @@ function buildContext() {
   if (userLatLng) {
     lines.push('', '=== USER\'S CURRENT LOCATION ===');
     lines.push('User has shared their GPS location. Nearby stops and next arrivals:');
-    nearestStopsToUser(userLatLng[0], userLatLng[1], 3).forEach(function(c) {
+    var nearStops = nearestStopsToUser(userLatLng[0], userLatLng[1], 3);
+    // Identify which stop the Near You panel recommends (lowest walk + ETA total)
+    var recStopName = '';
+    var recMinTime = Infinity;
+    nearStops.forEach(function(c) {
+      var walkMins = Math.max(1, Math.ceil(c.dist / 80));
+      var arr = arrivalsForStop(c.stop.name);
+      if (arr.length) {
+        var total = walkMins + arr[0].etaMinutes;
+        if (total < recMinTime) { recMinTime = total; recStopName = c.stop.name; }
+      }
+    });
+    nearStops.forEach(function(c) {
       var distStr = c.dist < 1000 ? Math.round(c.dist) + 'm' : (c.dist/1000).toFixed(1) + 'km';
       var walkMins = Math.max(1, Math.ceil(c.dist / 80));
-      lines.push('Stop: ' + c.stop.name + ' (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
+      var tag = c.stop.name === recStopName ? ' [RECOMMENDED — shown in Near You panel]' : '';
+      lines.push('Stop: ' + c.stop.name + tag + ' (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
       arrivalsForStop(c.stop.name).slice(0, 2).forEach(function(a) {
         lines.push('  → ' + a.shuttle.label + ' (' + a.shuttle.route + '): arrives in ' + a.etaMinutes + ' min, capacity ' + a.shuttle.capacity_pct + '%');
       });
     });
-    lines.push('When the user asks which shuttle to take, factor in walk time + ETA and capacity.');
+    lines.push('When recommending a stop, prefer the RECOMMENDED one unless the user asks about a specific stop. Capacity shown is projected for when the shuttle arrives at that stop.');
   }
   return lines.join('\n');
 }
@@ -2800,7 +2853,7 @@ shuttles = mapPayload.shuttles.map(function(s) {
   var route = mapPayload.routes[s.route];
   var pos   = positionAtProgress(route, s.progress);
   var marker = L.marker(pos, {
-    icon: L.divIcon({className:'', html:'<div class="bus-marker" style="background:'+route.color+';">🚌</div>',
+    icon: L.divIcon({className:'', html:'<div class="bus-marker '+busColorClass(s.route)+'">🚌</div>',
       iconSize:[32,32], iconAnchor:[16,16]})
   }).addTo(leafletMap);
   var badge = L.marker(pos, {
@@ -2862,7 +2915,7 @@ function updateMarkerVisual(s) {
     relevanceCls = s._relevantForStop ? ' relevant' : ' dim';
   }
   s.marker.setIcon(L.divIcon({className:'',
-    html:'<div class="bus-marker'+(boarding?' boarding':'')+relevanceCls+'" style="background:'+route.color+';">🚌</div>',
+    html:'<div class="bus-marker '+busColorClass(s.route)+(boarding?' boarding':'')+relevanceCls+'">🚌</div>',
     iconSize:[32,32], iconAnchor:[16,16]}));
   s.badge.setIcon(L.divIcon({className:'',
     html: boarding ? '<div class="boarding-pill">Boarding</div>' : '',
