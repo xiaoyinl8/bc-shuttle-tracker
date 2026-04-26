@@ -1,14 +1,17 @@
 """Shared AI assistant logic and rendering for BC Shuttle Tracker."""
 
 import json
+import logging
 import os
 import re
 from datetime import datetime
 from typing import Any
 
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError, BadRequestError, RateLimitError
 from streamlit.errors import StreamlitSecretNotFoundError
+
+_log = logging.getLogger(__name__)
 
 from shuttle_simulation import (
     build_eta_prediction,
@@ -68,6 +71,9 @@ COMM_AVE_SERVICE_SCHEDULE = {
 }
 
 
+_CHAT_HISTORY_MAX = 40  # keep last 40 messages (20 turns) — enough context, prevents token bloat
+
+
 def _ensure_state() -> None:
     if "route_definitions" not in st.session_state:
         initialize_simulation_state()
@@ -82,6 +88,9 @@ def _ensure_state() -> None:
             "preferred_routes": [],
             "recent_goals": [],
         }
+    # Trim chat history to prevent unbounded growth
+    if len(st.session_state.ai_chat_history) > _CHAT_HISTORY_MAX:
+        st.session_state.ai_chat_history = st.session_state.ai_chat_history[-_CHAT_HISTORY_MAX:]
 
 
 def _reset_ai_memory() -> None:
@@ -471,11 +480,14 @@ def _normalize_delay_update(payload: dict[str, Any]) -> dict[str, Any] | None:
     shuttle_id = delay_data.get("shuttle_id", "")
     delay_minutes = delay_data.get("delay_minutes", 0)
     if shuttle_id not in st.session_state.shuttle_data:
+        _log.warning("AI returned unknown shuttle_id %r in delay_update.", shuttle_id)
         return None
 
     try:
-        return {"shuttle_id": shuttle_id, "delay_minutes": int(delay_minutes)}
+        clamped = max(-30, min(120, int(delay_minutes)))
+        return {"shuttle_id": shuttle_id, "delay_minutes": clamped}
     except (TypeError, ValueError):
+        _log.warning("AI returned non-integer delay_minutes %r — ignored.", delay_minutes)
         return None
 
 
@@ -614,13 +626,23 @@ def _process_ai_response(api_key: str) -> None:
 
     client = OpenAI(api_key=api_key)
     with st.spinner("Thinking…"):
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.3,
-            max_tokens=600,
-            response_format={"type": "json_object"},
-        )
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=900,
+                response_format={"type": "json_object"},
+            )
+        except AuthenticationError:
+            _log.error("OpenAI authentication failed — API key is invalid.")
+            raise ValueError("Invalid OpenAI API key. Please check your key and try again.")
+        except RateLimitError:
+            _log.warning("OpenAI rate limit reached.")
+            raise ValueError("OpenAI rate limit reached. Please wait a moment and try again.")
+        except BadRequestError as exc:
+            _log.error("OpenAI rejected the request: %s", exc)
+            raise ValueError(f"Request rejected by OpenAI: {exc}")
     raw = response.choices[0].message.content
     payload = _extract_json_object(raw)
     delay_data = _normalize_delay_update(payload)

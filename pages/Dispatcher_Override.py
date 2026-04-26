@@ -58,8 +58,13 @@ with left:
                 "time": datetime.now(),
             }
         )
-        for shuttle in st.session_state.shuttle_data.values():
+        # Apply delay to shuttle_data AND driver_shuttle_overrides so it survives rebuilds
+        for shuttle_id, shuttle in st.session_state.shuttle_data.items():
             shuttle["on_time"] = False
+            shuttle["delay_minutes"] = delay_minutes
+            st.session_state.driver_shuttle_overrides.setdefault(shuttle_id, {}).update(
+                {"on_time": False, "delay_minutes": delay_minutes}
+            )
         st.session_state.system_alerts.append(
             {
                 "type": "delay",

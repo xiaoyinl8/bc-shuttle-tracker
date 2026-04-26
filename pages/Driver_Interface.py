@@ -202,14 +202,46 @@ extra3, extra4 = st.columns(2)
 with extra3:
     if st.button("🚧 Construction Delay", use_container_width=True):
         set_override("on_time", False)
-        add_update("construction", "Construction causing delays")
+        set_override("delay_minutes", 5)
+        add_update("construction", "Construction causing delays (+5 min)")
         st.toast("Construction delay reported.", icon="🚧")
         st.rerun()
 with extra4:
     if st.button("❄️ Weather Delay", use_container_width=True):
         set_override("on_time", False)
-        add_update("weather", "Weather causing delays")
+        set_override("delay_minutes", 5)
+        add_update("weather", "Weather causing delays (+5 min)")
         st.toast("Weather delay reported.", icon="❄️")
+        st.rerun()
+
+st.divider()
+
+# --- Custom delay ---
+st.markdown("### ✏️ Custom Delay")
+custom_col1, custom_col2 = st.columns([2, 1])
+with custom_col1:
+    custom_delay = st.number_input(
+        "Delay in minutes (negative = running early):",
+        min_value=-30,
+        max_value=120,
+        value=0,
+        step=1,
+        key="custom_delay_input",
+    )
+with custom_col2:
+    st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+    if st.button("Apply Custom Delay", use_container_width=True, key="apply_custom_delay"):
+        if custom_delay == 0:
+            set_override("on_time", True)
+            set_override("delay_minutes", 0)
+            set_override("speed_mph", base_speed)
+            add_update("on_time", "Back on schedule (custom reset)")
+        else:
+            set_override("on_time", False)
+            set_override("delay_minutes", custom_delay)
+            direction = "late" if custom_delay > 0 else "early"
+            add_update("custom_delay", f"Running {abs(custom_delay)} min {direction} (custom report)")
+        st.toast(f"Custom delay of {custom_delay} min applied.", icon="✏️")
         st.rerun()
 
 st.divider()

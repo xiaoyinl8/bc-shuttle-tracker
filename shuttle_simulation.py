@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 from datetime import datetime
 
 import streamlit as st
+
+_log = logging.getLogger(__name__)
 
 SIMULATION_TIME_SCALE = 1.0
 STOP_PROXIMITY_THRESHOLD = 0.012
@@ -286,6 +289,12 @@ def _build_route_metrics(route: dict) -> dict:
     }
 
 
+@st.cache_data
+def _cached_route_metrics(route_name: str) -> dict:
+    """Compute and cache route geometry — runs once per route per process lifetime."""
+    return _build_route_metrics(BC_ROUTES[route_name])
+
+
 def _nearest_progress_on_path(lat: float, lon: float, path: list[tuple[float, float]]) -> float:
     closest_progress = 0.0
     best_distance = float("inf")
@@ -352,8 +361,11 @@ def display_stop_name(stop_name: str) -> str:
     return f"{cleaned_name}{boarding_suffix}"
 
 
-def _stop_dwell_seconds(stop_name: str) -> int:
-    """Return realistic dwell time based on how busy the stop is."""
+def _stop_dwell_seconds(stop_name: str, capacity_pct: int = 50) -> int:
+    """Return realistic dwell time based on stop busyness and current capacity.
+
+    Crowded buses take longer to board and alight, so dwell scales up with load.
+    """
     base = stop_name.replace(" (boarding)", "").strip()
     # High-traffic hubs: full boarding cycle
     if base in {
@@ -362,9 +374,9 @@ def _stop_dwell_seconds(stop_name: str) -> int:
         "Newton – Stuart Hall",
         "Reservoir MBTA Stop",
     }:
-        return 35
+        seconds = 35
     # Medium stops: moderate passenger exchange
-    if base in {
+    elif base in {
         "College Road",
         "Chestnut Hill – Main Gate",
         "Robsham Theater",
@@ -372,9 +384,17 @@ def _stop_dwell_seconds(stop_name: str) -> int:
         "Newton – Duchesne",
         "2000 Commonwealth Ave.",
     }:
-        return 22
+        seconds = 22
     # All other stops: quick pass-through
-    return 12
+    else:
+        seconds = 12
+
+    # Crowded buses board and alight more slowly
+    if capacity_pct >= 85:
+        return int(seconds * 1.4)
+    if capacity_pct >= 65:
+        return int(seconds * 1.2)
+    return seconds
 
 
 # Net capacity change (percentage points) when a shuttle completes boarding at a stop.
@@ -425,9 +445,10 @@ def initialize_simulation_state() -> None:
     for route_name, route in BC_ROUTES.items():
         route_definitions[route_name] = {
             **route,
-            "metrics": _build_route_metrics(route),
+            "metrics": _cached_route_metrics(route_name),
         }
     st.session_state.route_definitions = route_definitions
+    _log.info("Initialized route definitions for %d routes.", len(route_definitions))
 
     stops = {}
     for route_name, route in st.session_state.route_definitions.items():
@@ -529,6 +550,20 @@ def initialize_simulation_state() -> None:
     if "has_seen_onboarding" not in st.session_state:
         st.session_state.has_seen_onboarding = False
 
+    # Prevent unbounded memory growth for log lists accumulated during the session
+    _LIST_MAX = 100
+    for _key in (
+        "recent_updates",
+        "driver_updates",
+        "dispatcher_overrides",
+        "system_alerts",
+        "feedback_history",
+        "rider_feedback_reports",
+    ):
+        lst = st.session_state.get(_key)
+        if isinstance(lst, list) and len(lst) > _LIST_MAX:
+            st.session_state[_key] = lst[-_LIST_MAX:]
+
     update_shuttle_positions(advance=False)
 
 
@@ -581,7 +616,8 @@ def update_shuttle_positions(advance: bool = True) -> None:
                     shuttle["progress"] = (
                         st.session_state.route_definitions[shuttle["route"]]["metrics"]["stop_progress"][next_stop_name]
                     )
-                    shuttle["dwell_seconds_remaining"] = _stop_dwell_seconds(next_stop_name)
+                    shuttle["dwell_seconds_remaining"] = _stop_dwell_seconds(next_stop_name, shuttle["capacity_pct"])
+                    _log.debug("Shuttle %s arrived at %s (capacity %d%%)", shuttle["label"], next_stop_name, shuttle["capacity_pct"])
                     # Apply boarding/alighting: capacity changes as passengers get on/off
                     delta = STOP_CAPACITY_DELTA.get(next_stop_name, 0)
                     shuttle["capacity_pct"] = max(5, min(95, shuttle["capacity_pct"] + delta))
@@ -600,7 +636,32 @@ def update_shuttle_positions(advance: bool = True) -> None:
     st.session_state.simulated_seconds_per_refresh = simulated_seconds
 
 
+def _dwell_minutes_enroute(route_name: str, shuttle_progress: float, stop_name: str, capacity_pct: int) -> float:
+    """Sum dwell times (minutes) for all intermediate stops between shuttle and target.
+
+    Only counts stops the shuttle will pass through before reaching stop_name, using
+    progress fractions so the loop wrap-around is handled correctly.
+    """
+    route = st.session_state.route_definitions[route_name]
+    stop_progress_map = route["metrics"]["stop_progress"]
+    target_progress = stop_progress_map.get(stop_name)
+    if target_progress is None:
+        return 0.0
+    to_target = (target_progress - shuttle_progress) % 1.0
+    total_dwell = 0.0
+    for sname, sprogress in stop_progress_map.items():
+        if sname == stop_name:
+            continue
+        remaining = (sprogress - shuttle_progress) % 1.0
+        if 0 < remaining < to_target:
+            total_dwell += _stop_dwell_seconds(sname, capacity_pct)
+    return total_dwell / 60.0
+
+
 def get_stop_arrivals(stop_name: str) -> list[dict]:
+    if stop_name not in st.session_state.stops:
+        _log.warning("get_stop_arrivals: unknown stop %r — returning empty list.", stop_name)
+        return []
     arrivals = []
     stop = st.session_state.stops[stop_name]
     for shuttle_id, shuttle in st.session_state.shuttle_data.items():
@@ -611,8 +672,14 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
             continue
         route_length = st.session_state.route_definitions[shuttle["route"]]["metrics"]["total_length"]
         remaining_miles = progress_delta * route_length
-        base_eta = round((remaining_miles / max(shuttle["speed_mph"], 1)) * 60)
-        delay = shuttle.get("delay_minutes", 0)
+        travel_minutes = (remaining_miles / max(shuttle["speed_mph"], 1)) * 60
+        # Include time still boarding at current stop plus dwell at all intermediate stops
+        current_dwell_minutes = shuttle.get("dwell_seconds_remaining", 0) / 60.0
+        enroute_dwell_minutes = _dwell_minutes_enroute(
+            shuttle["route"], shuttle["progress"], stop_name, shuttle["capacity_pct"]
+        )
+        base_eta = round(travel_minutes + current_dwell_minutes + enroute_dwell_minutes)
+        delay = max(-30, min(120, shuttle.get("delay_minutes", 0)))  # cap to ±30/120 min
         eta_minutes = max(1, base_eta + delay)
         arrivals.append(
             {
@@ -638,6 +705,9 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
 
 
 def build_eta_prediction(stop_name: str) -> dict:
+    if stop_name not in st.session_state.get("stops", {}):
+        _log.warning("build_eta_prediction: unknown stop %r.", stop_name)
+        return {"min": 0, "max": 0, "confidence": 45, "best_match": None, "alternatives": []}
     arrivals = get_stop_arrivals(stop_name)
     if not arrivals:
         return {
@@ -652,10 +722,32 @@ def build_eta_prediction(stop_name: str) -> dict:
     min_eta = max(1, best["eta_minutes"] - 1)
     max_eta = best["eta_minutes"] + 2
 
+    # Base confidence from on-time status
     confidence = 88 if best["on_time"] else 68
+
+    # Rider feedback adjustments (capped window to last 5 events)
     recent_negative = sum(1 for item in st.session_state.feedback_history[-5:] if item["type"] == "wrong")
     recent_positive = sum(1 for item in st.session_state.feedback_history[-5:] if item["type"] == "accurate")
-    confidence = max(45, min(97, confidence - recent_negative * 5 + recent_positive * 2))
+    confidence += recent_positive * 2 - recent_negative * 5
+
+    # Position uncertainty compounds over longer distances — penalise far-away ETAs
+    if best["eta_minutes"] > 20:
+        confidence -= 12
+    elif best["eta_minutes"] > 12:
+        confidence -= 6
+
+    # Large driver-reported delays mean we have less certainty about the exact arrival
+    abs_delay = abs(best.get("delay_minutes", 0))
+    if abs_delay >= 10:
+        confidence -= 8
+    elif abs_delay >= 5:
+        confidence -= 4
+
+    # Express buses skip stops so their ETA is more predictable
+    if best.get("is_express"):
+        confidence += 5
+
+    confidence = max(45, min(97, confidence))
 
     return {
         "min": min_eta,
