@@ -681,6 +681,19 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
         base_eta = round(travel_minutes + current_dwell_minutes + enroute_dwell_minutes)
         delay = max(-30, min(120, shuttle.get("delay_minutes", 0)))  # cap to ±30/120 min
         eta_minutes = max(1, base_eta + delay)
+
+        # Count intermediate stops the shuttle will pass through before reaching the target
+        stop_progress_map = st.session_state.route_definitions[shuttle["route"]]["metrics"]["stop_progress"]
+        stops_remaining = sum(
+            1 for sname, sp in stop_progress_map.items()
+            if sname != stop_name
+            and 0 < (sp - shuttle["progress"]) % 1.0 < progress_delta
+        )
+        # loop_wraps = True when the shuttle must cross the progress=0 boundary (i.e. complete
+        # more than half the loop) to reach the stop — meaning it is currently heading away
+        # from the target and the ETA includes the long way around.
+        loop_wraps = progress_delta > 0.5
+
         arrivals.append(
             {
                 "shuttle_id": shuttle_id,
@@ -698,6 +711,8 @@ def get_stop_arrivals(stop_name: str) -> list[dict]:
                 "speed_mph": shuttle["speed_mph"],
                 "delay_minutes": delay,
                 "is_express": shuttle.get("is_express", False),
+                "stops_remaining": stops_remaining,
+                "loop_wraps": loop_wraps,
             }
         )
 

@@ -322,6 +322,8 @@ def _build_context_payload() -> dict[str, Any]:
                 "capacity_pct": arrival["capacity_pct"],
                 "capacity_label": _capacity_label(arrival["capacity_pct"]),
                 "delay_minutes": arrival["delay_minutes"],
+                "loop_wraps": arrival.get("loop_wraps", False),
+                "stops_remaining": arrival.get("stops_remaining", 0),
                 "tradeoff_hint": (
                     "less crowded but slower"
                     if best and arrival["capacity_pct"] < best["capacity_pct"] and arrival["eta_minutes"] > best["eta_minutes"]
@@ -416,6 +418,32 @@ Rules:
 - Support what-if reasoning when relevant.
 - Keep the tone practical, calm, and student-friendly.
 - If information is missing, say that clearly.
+
+LOOP DIRECTION — CRITICAL:
+The Comm Ave All Stops route is a one-way loop. The direction is:
+  Conte Forum → McElroy → College Road → Chestnut Hill Main Gate → Evergreen Cemetery
+  → 2000 Commonwealth Ave → Reservoir MBTA → B.O.A / Chestnut Hill Ave → Chiswick Rd
+  → Corner Comm Ave/Chestnut Hill Ave → South Street → Greycliff Hall → Robsham Theater
+  → (back to Conte Forum)
+
+Each arrival in the context includes two fields:
+  - "loop_wraps": true if the shuttle must travel MORE THAN HALF the loop to reach the
+    rider's stop — meaning it is currently heading AWAY from that stop and will arrive
+    via the long way around all remaining stops.
+  - "stops_remaining": how many intermediate stops the shuttle will pass through before
+    reaching the rider's stop.
+
+When loop_wraps is TRUE, you MUST:
+  1. Tell the rider the shuttle is currently heading away from their stop.
+  2. State that the ETA already accounts for the full remaining loop.
+  3. Advise them to consider whether a stop on the opposite side of the street (inbound
+     direction) would be faster — e.g., a rider at 2000 Comm Ave wanting to go to Conte
+     Forum should NOT board the outbound shuttle there; they should cross to the inbound
+     side or wait at South Street / Greycliff for a shuttle already on the inbound arc.
+  4. Still show the ETA as computed (it is accurate) but frame it as "the long way around".
+
+Do NOT describe a loop_wraps=true shuttle as "heading to" the stop directly — it is going
+the long way around. Always surface this to the rider.
 
 Shuttle IDs for delay updates:
 - comm-1 = Comm Ave 1
