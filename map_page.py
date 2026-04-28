@@ -964,8 +964,22 @@ _AI_SYSTEM_PROMPT = (
     "Capabilities: answer questions about next arrivals, ETAs, capacity, and delays; "
     "accept delay reports from users and update the system; summarize the shuttle schedule. "
     "When the user has selected both an origin stop and destination stop, plan around that trip. "
+    "Do not silently change the boarding stop. If recommending a bus from a nearby alternate stop, "
+    "say that it requires walking to that stop first and include combined walk-plus-wait timing. "
+    "For questions about the next bus from the selected stop, use selected-origin arrivals by default. "
+    "When a structured class schedule JSON section is present, use it for class-aware suggestions "
+    "and next-class planning instead of relying only on the raw schedule transcription. "
+    "Use the provided current datetime in America/New_York for all schedule and 'today' reasoning. "
+    "If the context says the destination is not set because it matches the origin, do not recommend "
+    "boarding a shuttle for a trip. Ask the rider to choose a different destination first. "
     "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
-    "Respond with one valid JSON object and no extra text. Use this schema: "
+    "Decide the response format yourself. Use plain text only when the user asks a follow-up explanation, "
+    "asks about confidence or uncertainty, asks how you reasoned, asks a general custom question, "
+    "or does not need an actionable shuttle card. Use structured JSON only when the answer should create "
+    "a rider action card, such as a next-arrival check, route recommendation, comparison, schedule or "
+    "capacity decision, what-if trip plan, or explicit delay update. If you use plain text, do not include "
+    "JSON, markdown headings, or schema labels. "
+    "When a structured response is useful, respond with one valid JSON object and no extra text. Use this schema: "
     "{"
     "\"summary\":\"2 short sentences\","
     "\"recommended_option\":{\"action\":\"short recommendation\",\"route\":\"route or null\",\"bus\":\"bus label or null\",\"eta_minutes\":0,\"reasoning\":[\"reason\"]},"
@@ -976,9 +990,11 @@ _AI_SYSTEM_PROMPT = (
     "\"follow_up_question\":\"optional next question or null\","
     "\"delay_update\":{\"shuttle_id\":\"comm-1\",\"delay_minutes\":0}"
     "}. "
+    "For confidence.score, use a real 0-100 confidence score. Do not use 0 as a placeholder "
+    "when label is high, medium, or low. "
     "Use JSON null for proactive_alert or follow_up_question when there is nothing useful to say; never write phrases like 'none at this time'. "
     "Only set delay_update when the user explicitly reports or clears a delay; otherwise set it to null. "
-    "Be friendly, concise, explain the why, and include confidence."
+    "Be friendly, concise, explain the why, and include confidence for structured recommendations."
 )
 
 
@@ -1427,7 +1443,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   /* Shuttle relevance highlighting when a stop is selected */
   .bus-marker.relevant {box-shadow:0 0 0 5px rgba(250,204,21,.75),0 2px 8px rgba(0,0,0,.4);
     transform:scale(1.12);transition:box-shadow .25s ease,transform .25s ease;animation:none;}
-  .bus-marker.dim {opacity:0.45;transition:opacity .25s ease;}
+  .bus-marker.dim {opacity:1;transition:opacity .25s ease;}
   /* Location-based recommendation card */
   .loc-rec-best {background:#0a1f38 !important;}
   .loc-rec-badge {font-size:10px;font-weight:800;color:#60a5fa;margin-bottom:5px;letter-spacing:.04em;}
@@ -1750,6 +1766,12 @@ function arrivalsForStop(stopName) {
     .sort(function(a,b){ return a.etaMinutes - b.etaMinutes; });
 }
 
+function routeProgressDelta(routeName, fromStopName, toStopName) {
+  var route = mapPayload.routes[routeName];
+  if (!route || route.stop_progress[fromStopName] === undefined || route.stop_progress[toStopName] === undefined) return null;
+  return (route.stop_progress[toStopName] - route.stop_progress[fromStopName] + 1) % 1;
+}
+
 function routeNamesForStop(stopName) {
   return routeEntries
     .filter(function(entry) { return entry[1].stop_progress[stopName] !== undefined; })
@@ -1837,6 +1859,7 @@ var hasAutoSelectedNearestStop = false;
 var stopSectionVisible = false; // hidden until user actively selects a stop
 var chatHistory = Array.isArray(AI_CHAT_HISTORY) ? AI_CHAT_HISTORY.slice() : [];
 var userSchedule = null; // parsed schedule text extracted from uploaded image
+var userScheduleEntries = []; // structured entries extracted from uploaded image
 var userProfile = {
   nickname: '',
   timing_style: 'balanced',
@@ -2047,6 +2070,23 @@ function parseDaysFromScheduleLine(line) {
   return dayTokens;
 }
 
+function easternDateTimeLabel() {
+  return new Date().toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
+}
+
+function easternNow() {
+  return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/New_York'}));
+}
+
 function parseStartTimeMinutes(line) {
   var match = line.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*[–-]\s*\d{1,2}(?::\d{2})?\s*(am|pm)/i)
     || line.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
@@ -2060,6 +2100,20 @@ function parseStartTimeMinutes(line) {
   return hour * 60 + minute;
 }
 
+function parseClockTimeMinutes(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (!value) return null;
+  var match = String(value).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!match) return null;
+  var hour = parseInt(match[1], 10);
+  var minute = parseInt(match[2] || '0', 10);
+  var meridiem = match[3] ? match[3].toLowerCase() : '';
+  if (meridiem === 'pm' && hour !== 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  if (!meridiem && hour < 7) hour += 12;
+  return hour * 60 + minute;
+}
+
 function parseCourseName(line) {
   var parts = line.split(',').map(function(part) { return part.trim(); }).filter(Boolean);
   if (parts.length >= 3) return parts[2];
@@ -2067,7 +2121,39 @@ function parseCourseName(line) {
   return line.trim();
 }
 
+function normalizeScheduleEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  var rawDays = parseDaysFromScheduleLine(entry.raw || '');
+  var days = rawDays.length
+    ? rawDays
+    : Array.isArray(entry.days)
+      ? entry.days
+      : [];
+  var startMinutes = entry.start_minutes;
+  if (startMinutes === undefined || startMinutes === null) {
+    startMinutes = parseClockTimeMinutes(entry.start_time);
+    if (startMinutes === null || startMinutes === undefined) {
+      startMinutes = parseStartTimeMinutes(entry.raw || '');
+    }
+  }
+  var course = entry.course || entry.course_name || entry.title || parseCourseName(entry.raw || '');
+  var location = entry.location || entry.room || '';
+  if (!days.length || startMinutes === null || startMinutes === undefined) return null;
+  return {
+    raw: entry.raw || [days.join('/'), entry.start_time || '', course, location].filter(Boolean).join(', '),
+    days: days,
+    startMinutes: startMinutes,
+    course: course,
+    location: location
+  };
+}
+
 function parseScheduleEntries() {
+  if (Array.isArray(userScheduleEntries) && userScheduleEntries.length) {
+    return userScheduleEntries
+      .map(normalizeScheduleEntry)
+      .filter(Boolean);
+  }
   if (!userSchedule) return [];
   return userSchedule
     .split('\n')
@@ -2078,7 +2164,8 @@ function parseScheduleEntries() {
         raw: line,
         days: parseDaysFromScheduleLine(line),
         startMinutes: parseStartTimeMinutes(line),
-        course: parseCourseName(line)
+        course: parseCourseName(line),
+        location: ''
       };
     })
     .filter(function(entry) {
@@ -2100,7 +2187,7 @@ function nextScheduledClass() {
     Saturday: 6
   };
 
-  var now = new Date();
+  var now = easternNow();
   var best = null;
 
   entries.forEach(function(entry) {
@@ -2116,6 +2203,7 @@ function nextScheduledClass() {
           when: candidate,
           dayName: dayName,
           course: entry.course,
+          location: entry.location || '',
           raw: entry.raw
         };
       }
@@ -2130,7 +2218,7 @@ function formatClassTimeLabel(date) {
 }
 
 function relativeClassDayLabel(date) {
-  var now = new Date();
+  var now = easternNow();
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   var target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   var diffDays = Math.round((target - today) / 86400000);
@@ -2147,6 +2235,10 @@ function getScheduleStorageKey() {
   return 'bc_shuttle_schedule_text_v1';
 }
 
+function getScheduleEntriesStorageKey() {
+  return 'bc_shuttle_schedule_entries_v1';
+}
+
 function loadProfile() {
   try {
     var saved = localStorage.getItem(getProfileStorageKey());
@@ -2161,8 +2253,10 @@ function loadProfile() {
   try {
     var savedSchedule = localStorage.getItem(getScheduleStorageKey());
     if (savedSchedule) userSchedule = savedSchedule;
+    var savedScheduleEntries = localStorage.getItem(getScheduleEntriesStorageKey());
+    if (savedScheduleEntries) userScheduleEntries = JSON.parse(savedScheduleEntries) || [];
   } catch (error) {
-    console.warn('Could not restore schedule text', error);
+    console.warn('Could not restore schedule data', error);
   }
 }
 
@@ -2172,6 +2266,11 @@ function saveProfileToStorage() {
     localStorage.setItem(getScheduleStorageKey(), userSchedule);
   } else {
     localStorage.removeItem(getScheduleStorageKey());
+  }
+  if (Array.isArray(userScheduleEntries) && userScheduleEntries.length) {
+    localStorage.setItem(getScheduleEntriesStorageKey(), JSON.stringify(userScheduleEntries));
+  } else {
+    localStorage.removeItem(getScheduleEntriesStorageKey());
   }
 }
 
@@ -2201,9 +2300,17 @@ function syncProfileUi() {
 
   var scheduleStatus = document.getElementById('profile-schedule-status');
   if (userSchedule) {
-    scheduleStatus.textContent = 'Schedule uploaded and ready for class-aware recommendations.';
+    var parsedCount = parseScheduleEntries().length;
+    scheduleStatus.textContent = parsedCount
+      ? 'Schedule uploaded with ' + parsedCount + ' parsed classes for recommendations.'
+      : 'Schedule uploaded; the assistant will use the extracted text.';
+    document.getElementById('schedule-label').textContent = parsedCount
+      ? 'Schedule loaded: ' + parsedCount + ' classes'
+      : 'Schedule loaded';
+    document.getElementById('schedule-badge').style.display = 'flex';
   } else {
     scheduleStatus.textContent = 'No schedule uploaded yet.';
+    document.getElementById('schedule-badge').style.display = 'none';
   }
 
 }
@@ -2276,22 +2383,96 @@ function profileSummaryLines() {
   return lines;
 }
 
+function nextClassLabel(nextClass) {
+  if (!nextClass) return 'my next class';
+  var parts = [
+    formatClassTimeLabel(nextClass.when),
+    relativeClassDayLabel(nextClass.when),
+    nextClass.course || 'class'
+  ];
+  if (nextClass.location) parts.push('at ' + nextClass.location);
+  return parts.join(' ');
+}
+
+function lastAssistantMessage() {
+  for (var i = chatHistory.length - 1; i >= 0; i--) {
+    if (chatHistory[i] && chatHistory[i].role === 'assistant') return chatHistory[i];
+  }
+  return null;
+}
+
+function followUpSuggestionsFromLastResponse(nextClass, needsDestination) {
+  var last = lastAssistantMessage();
+  if (!last) return [];
+  var text = String(last.content || last.display || '').toLowerCase();
+  var suggestions = [];
+
+  if (text.indexOf('check the shuttle schedule') !== -1 || text.indexOf('closer to that time') !== -1 || text.indexOf('that time') !== -1) {
+    suggestions.push("Check the shuttle schedule for that time.");
+    suggestions.push("Which shuttle should I plan to catch then?");
+    suggestions.push("What time should I leave if I want a safer buffer?");
+  }
+
+  if (text.indexOf('destination') !== -1 || needsDestination) {
+    suggestions.push("Which destination should I set for my next class?");
+  }
+
+  if (nextClass && (text.indexOf('next class') !== -1 || text.indexOf('leave') !== -1)) {
+    suggestions.push("How confident are you about that leave time?");
+    suggestions.push("What if I want to arrive 10 minutes early?");
+  }
+
+  return suggestions;
+}
+
 function buildSuggestedQuestions() {
   var suggestions = [];
   var intro = personalizedIntro();
-  // Always surface a location-based suggestion when GPS is active
-  if (userLatLng) {
-    suggestions.push("Based on my current location, which shuttle should I take to " + destinationStop + " right now?");
-  }
   var maxWait = String(userProfile.max_wait_minutes || '10');
   var preferredRoute = preferredRouteText();
   var nextClass = nextScheduledClass();
   var nextClassDay = nextClass ? relativeClassDayLabel(nextClass.when) : '';
   var nextClassTime = nextClass ? formatClassTimeLabel(nextClass.when) : '';
   var nextClassCourse = nextClass && nextClass.course ? nextClass.course : 'class';
+  var nextClassText = nextClassLabel(nextClass);
+  var needsDestination = selectedStop === destinationStop;
+  followUpSuggestionsFromLastResponse(nextClass, needsDestination).forEach(function(question) {
+    suggestions.push(question);
+  });
+
+  if (userSchedule) {
+    if (nextClass) {
+      suggestions.push("When should I leave for my next class?");
+      suggestions.push("Which shuttle gets me there with the safest buffer?");
+      if (needsDestination) {
+        suggestions.push("Which destination should I set for my next class?");
+      } else {
+        suggestions.push("Which shuttle should I take for my next class?");
+      }
+      suggestions.push("Can you plan the safest shuttle option for my next class?");
+    } else {
+      suggestions.push("Can you use my uploaded schedule to plan my next class commute?");
+      suggestions.push("Which class in my schedule should I plan around next?");
+      suggestions.push("Can you summarize my shuttle plan from my uploaded schedule?");
+    }
+  }
+
+  if (needsDestination) {
+    suggestions.push("Which destination stop should I choose for my trip?");
+    suggestions.push("What stops can I travel to from here?");
+    suggestions.push("How do I update my destination?");
+    return suggestions.filter(function(item, index, arr) {
+      return item && arr.indexOf(item) === index;
+    }).slice(0, 4);
+  }
+
+  // Surface location-based help after any schedule-aware prompts.
+  if (userLatLng) {
+    suggestions.push("Based on my current location, which shuttle should I take to " + destinationStop + " right now?");
+  }
 
   if (!chatHistory.length) {
-    if (nextClass) {
+    if (nextClass && !userSchedule) {
       suggestions.push(
         "Do you want me to help plan when to leave for your " + nextClassTime + " " + nextClassDay + " " + nextClassCourse + "?"
       );
@@ -2332,7 +2513,7 @@ function buildSuggestedQuestions() {
       suggestions.push("What if I leave 5 minutes later?");
     }
   } else {
-    if (nextClass) {
+    if (nextClass && !userSchedule) {
       suggestions.push("Can you remind me when I should leave for my " + nextClassTime + " " + nextClassDay + " class?");
     }
 
@@ -2398,6 +2579,27 @@ function renderSuggestedQuestions() {
 }
 
 function buildProactiveAlert() {
+  if (selectedStop === destinationStop) {
+    return {
+      key: 'destination|' + selectedStop,
+      text: 'Your destination is still set to ' + escapeHtml(selectedStop) + '. Choose a different destination before asking for a shuttle recommendation.'
+    };
+  }
+
+  var originArrivals = arrivalsForStop(selectedStop);
+  var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
+    return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
+  });
+  if (!sharedRoutes.length) {
+    return {
+      key: 'no-direct|' + selectedStop + '|' + destinationStop,
+      text: 'No direct route currently serves both ' + escapeHtml(selectedStop) + ' and ' + escapeHtml(destinationStop) + '. Ask AI for the lowest-risk transfer or walking plan.'
+    };
+  }
+  if (!originArrivals.length) {
+    return null;
+  }
+
   // Only fire when the next shuttle to the selected stop is arriving within 3 minutes.
   if (!selectedStop) return null;
   var arrivals = arrivalsForStop(selectedStop);
@@ -2514,7 +2716,8 @@ function renderStructuredReply(payload) {
   var conf = payload.confidence || {};
   if (conf.score !== undefined || conf.explanation) {
     var label = conf.label ? String(conf.label).replace(/^\w/, function(c){ return c.toUpperCase(); }) : 'Confidence';
-    if (conf.score !== undefined && conf.score !== null) label += ' (' + conf.score + '%)';
+    var confidenceScore = normalizedConfidenceScore(conf.score, conf.label);
+    if (confidenceScore !== null) label += ' (' + confidenceScore + '%)';
     html += '<div class="ai-section"><div class="ai-section-title">Uncertainty</div><div class="ai-section-main">' + escapeHtml(label) + '</div>';
     if (conf.explanation) html += '<div class="ai-section-detail">' + escapeHtml(String(conf.explanation)) + '</div>';
     html += '</div>';
@@ -2553,6 +2756,85 @@ function renderStructuredReply(payload) {
   return html;
 }
 
+function normalizedConfidenceScore(score, label) {
+  var numericScore = Number(score);
+  var hasNumericScore = Number.isFinite(numericScore);
+  var normalizedLabel = String(label || '').trim().toLowerCase();
+  if (hasNumericScore && numericScore === 0 && ['high', 'medium', 'low'].indexOf(normalizedLabel) !== -1) return null;
+  if (!hasNumericScore) return null;
+  return Math.max(0, Math.min(100, Math.round(numericScore)));
+}
+
+function extractJsonStringValue(text, key) {
+  var pattern = new RegExp('"' + key + '"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"', 's');
+  var match = String(text || '').match(pattern);
+  if (!match) return '';
+  try {
+    return JSON.parse('"' + match[1] + '"');
+  } catch (error) {
+    return match[1].replace(/\\"/g, '"');
+  }
+}
+
+function extractJsonNumberValue(text, key) {
+  var pattern = new RegExp('"' + key + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)');
+  var match = String(text || '').match(pattern);
+  return match ? Number(match[1]) : null;
+}
+
+function salvageStructuredReply(raw) {
+  var text = String(raw || '');
+  if (text.indexOf('"summary"') === -1 && text.indexOf('"recommended_option"') === -1) return null;
+  var payload = {
+    summary: extractJsonStringValue(text, 'summary'),
+    recommended_option: {
+      action: extractJsonStringValue(text, 'action'),
+      route: extractJsonStringValue(text, 'route'),
+      bus: extractJsonStringValue(text, 'bus'),
+      eta_minutes: extractJsonNumberValue(text, 'eta_minutes'),
+      reasoning: []
+    },
+    confidence: {
+      score: extractJsonNumberValue(text, 'score'),
+      label: extractJsonStringValue(text, 'label'),
+      explanation: extractJsonStringValue(text, 'explanation')
+    },
+    alternatives: [],
+    what_if_options: [],
+    proactive_alert: null,
+    follow_up_question: extractJsonStringValue(text, 'follow_up_question'),
+    delay_update: null
+  };
+  var reason = extractJsonStringValue(text, 'reasoning');
+  if (reason) payload.recommended_option.reasoning.push(reason);
+  return payload;
+}
+
+function tryParseStructuredReply(raw) {
+  var text = (raw || '').trim();
+  if (text.indexOf('{') === -1 && text.indexOf('```') !== 0) return null;
+  try {
+    var parsed = parseStructuredReply(text);
+    if (typeof parsed === 'string') {
+      parsed = parseStructuredReply(parsed);
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+    var structuredKeys = [
+      'recommended_option',
+      'confidence',
+      'alternatives',
+      'what_if_options',
+      'proactive_alert',
+      'delay_update'
+    ];
+    return structuredKeys.some(function(key) { return Object.prototype.hasOwnProperty.call(parsed, key); })
+      ? parsed
+      : null;
+  } catch (error) {
+    return salvageStructuredReply(text);
+  }
+}
+
 function appendMsg(role, html, badgeText, badgeOk) {
   var box = document.getElementById('chat-box');
   var div = document.createElement('div');
@@ -2579,12 +2861,69 @@ function clearChat() {
 
 function clearSchedule() {
   userSchedule = null;
+  userScheduleEntries = [];
   document.getElementById('schedule-badge').style.display = 'none';
   document.getElementById('schedule-file').value = '';
   saveProfileToStorage();
   syncProfileUi();
   renderSuggestedQuestions();
   showToast('🗑️ Class schedule removed', 'warn');
+}
+
+function normalizeSchedulePayload(raw) {
+  var payload = null;
+  try {
+    payload = parseStructuredReply(raw);
+  } catch (error) {
+    payload = null;
+  }
+  if (!payload || typeof payload !== 'object') {
+    return {
+      rawText: String(raw || '').trim(),
+      entries: []
+    };
+  }
+  var entries = Array.isArray(payload.classes) ? payload.classes : [];
+  var normalizedEntries = entries
+    .map(function(entry) {
+      if (!entry || typeof entry !== 'object') return null;
+      var days = Array.isArray(entry.days) ? entry.days : [];
+      var rawLine = entry.raw || [
+        days.join('/'),
+        entry.start_time || '',
+        entry.end_time ? '- ' + entry.end_time : '',
+        entry.course || entry.course_name || entry.title || '',
+        entry.location || ''
+      ].filter(Boolean).join(' ');
+      return {
+        days: days,
+        start_time: entry.start_time || '',
+        end_time: entry.end_time || '',
+        course: entry.course || entry.course_name || entry.title || '',
+        location: entry.location || '',
+        raw: rawLine
+      };
+    })
+    .filter(function(entry) {
+      return entry && entry.days.length && entry.start_time;
+    });
+  return {
+    rawText: payload.raw_text || normalizedEntries.map(function(entry) { return entry.raw; }).join('\n') || String(raw || '').trim(),
+    entries: normalizedEntries
+  };
+}
+
+function scheduleExampleText() {
+  var nextClass = nextScheduledClass();
+  if (nextClass) {
+    var label = nextClassLabel(nextClass);
+    return '📅 I\'ve read your schedule and found your next class: ' + escapeHtml(label) + '. Ask me things like:<br>' +
+      '"When should I leave for ' + escapeHtml(label) + '?"<br>' +
+      '"Which shuttle gets me there with the safest buffer?"';
+  }
+  return '📅 I\'ve read your schedule. Ask me things like:<br>' +
+    '"Which shuttle should I take for my next class?"<br>' +
+    '"When should I leave based on my uploaded schedule?"';
 }
 
 document.getElementById('schedule-file').addEventListener('change', async function() {
@@ -2614,25 +2953,26 @@ document.getElementById('schedule-file').addEventListener('change', async functi
             content: [
               {type:'image_url', image_url:{url:'data:'+mimeType+';base64,'+base64}},
               {type:'text', text:
-                'Extract the class schedule from this image. List each class as: ' +
-                'Day(s), Time, Course name/number, Location. ' +
-                'Use plain text, one class per line. If something is unclear, make your best guess. ' +
-                'Only output the schedule, no extra commentary.'}
+                'Extract the class schedule from this image. Return one valid JSON object only with this shape: ' +
+                '{"raw_text":"plain text transcription","classes":[{"days":["Monday"],"start_time":"9:00 AM","end_time":"10:15 AM","course":"course name or number","location":"building and room if visible","raw":"original line"}]}. ' +
+                'Read the weekday from the calendar column header above each class block; do not infer it from today or from neighboring columns. ' +
+                'Include the weekday in each raw line, for example "Monday, 4:30 PM - 6:50 PM, BZAN2165, Fulton Hall 235". ' +
+                'Use full weekday names in days. If a field is unclear, use an empty string except days should be an empty array. Do not add commentary.'}
             ]
-          }]
+          }],
+          response_format: {type: 'json_object'}
         })
       });
       var data = await resp.json();
       if (data.error) throw new Error(data.error.message);
-      userSchedule = data.choices[0].message.content.trim();
+      var parsedSchedule = normalizeSchedulePayload(data.choices[0].message.content);
+      userSchedule = parsedSchedule.rawText;
+      userScheduleEntries = parsedSchedule.entries;
       saveProfileToStorage();
       var label = file.name.length > 24 ? file.name.slice(0,22)+'…' : file.name;
       document.getElementById('schedule-label').textContent = 'Schedule loaded: ' + label;
       document.getElementById('schedule-badge').style.display = 'flex';
-      appendMsg('ai',
-        '📅 I\'ve read your schedule! Ask me things like:<br>' +
-        '"Which shuttle should I take to not be late for my 9am Monday class?"<br>' +
-        '"What\'s the best shuttle for my Tuesday afternoon classes?"');
+      appendMsg('ai', scheduleExampleText());
       chatHistory.push({role:'assistant', content:'I have read your schedule.'});
       syncProfileUi();
       renderSuggestedQuestions();
@@ -2812,16 +3152,25 @@ function onDestinationChange(name) {
 }
 
 function buildContext() {
-  var time = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  var now = new Date();
+  var time = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'America/New_York',timeZoneName:'short'});
+  var needsDestination = selectedStop === destinationStop;
+  var nextClass = nextScheduledClass();
   var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
     return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
   });
   var lines = [
     'The user is currently at or starting from stop: ' + selectedStop + '.',
     'The user selected destination stop: ' + destinationStop + '.',
+    'Current datetime: ' + easternDateTimeLabel() + '.',
+    'Timezone: America/New_York.',
+    'Destination status: ' + (needsDestination ? 'NOT SET - destination matches origin. Ask the user to update destination before recommending a shuttle.' : 'set') + '.',
     'Routes serving both selected stops: ' + (sharedRoutes.length ? sharedRoutes.join(', ') : 'none found in current route data') + '.',
-    'When giving directions or arrival info, plan from ' + selectedStop + ' to ' + destinationStop + ' unless they say otherwise.',
-    'Current time: ' + time, '', '=== LIVE SHUTTLE STATUS ==='];
+    needsDestination
+      ? 'Do not give a trip boarding recommendation yet; the rider has not chosen a real destination.'
+      : 'When giving directions or arrival info, plan from ' + selectedStop + ' to ' + destinationStop + ' unless they say otherwise.',
+    'Default boarding stop is the selected origin stop: ' + selectedStop + '. Only recommend a different boarding stop if you explicitly include the walk to that stop and the combined walk-plus-wait timing.',
+    'Current time: ' + time + '.', '', '=== LIVE SHUTTLE STATUS ==='];
   (shuttles||[]).forEach(function(s) {
     var d  = s.delay_minutes||0;
     var ds = d>0?' (+'+d+' min delay)':d<0?' (running early)':' (on time)';
@@ -2833,12 +3182,17 @@ function buildContext() {
   lines.push('','=== ROUTE SCHEDULES ===');
   Object.entries(mapPayload.routes).forEach(function(e){
     lines.push('- '+e[0]+': '+e[1].service_days+', '+e[1].service_window+', '+e[1].headway);
+    lines.push('  Stops served: ' + e[1].ordered_stop_names.join(' → '));
   });
   lines.push('','=== UPCOMING ARRIVALS at origin '+selectedStop+' ===');
   var arr = arrivalsForStop(selectedStop);
   if (arr.length) {
     arr.slice(0,4).forEach(function(a){
-      lines.push('  - '+a.shuttle.label+' ('+a.shuttle.route+'): '+a.etaMinutes+' min away, capacity '+a.shuttle.capacity_pct+'%');
+      var tripDelta = routeProgressDelta(a.shuttle.route, selectedStop, destinationStop);
+      var tripNote = tripDelta !== null && tripDelta < 0.001
+        ? ' Same-stop destination: do not recommend boarding for this trip.'
+        : '';
+      lines.push('  - '+a.shuttle.label+' ('+a.shuttle.route+'): '+a.etaMinutes+' min away at selected origin '+selectedStop+', capacity '+a.shuttle.capacity_pct+'%.'+tripNote);
     });
   } else { lines.push('  No arrivals found.'); }
   lines.push('', '=== USER PROFILE ===');
@@ -2847,6 +3201,26 @@ function buildContext() {
   });
   if (userSchedule) {
     lines.push('', '=== USER\'S CLASS SCHEDULE ===', userSchedule);
+    var parsedEntries = parseScheduleEntries();
+    if (parsedEntries.length) {
+      if (nextClass) {
+        lines.push(
+          'Computed next class in America/New_York: ' +
+          nextClassLabel(nextClass) +
+          ' (parsed day: ' + nextClass.dayName + ', raw: ' + nextClass.raw + ')'
+        );
+      }
+      lines.push('', '=== STRUCTURED CLASS SCHEDULE JSON ===');
+      lines.push(JSON.stringify(parsedEntries.map(function(entry) {
+        return {
+          days: entry.days,
+          start_minutes: entry.startMinutes,
+          course: entry.course,
+          location: entry.location,
+          raw: entry.raw
+        };
+      })));
+    }
   }
   if (userLatLng) {
     lines.push('', '=== USER\'S CURRENT LOCATION ===');
@@ -2867,12 +3241,17 @@ function buildContext() {
       var distStr = c.dist < 1000 ? Math.round(c.dist) + 'm' : (c.dist/1000).toFixed(1) + 'km';
       var walkMins = Math.max(1, Math.ceil(c.dist / 80));
       var tag = c.stop.name === recStopName ? ' [RECOMMENDED — shown in Near You panel]' : '';
-      lines.push('Stop: ' + c.stop.name + tag + ' (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
+      var stopRole = c.stop.name === selectedStop ? 'selected origin' : 'alternate boarding stop';
+      lines.push('Stop: ' + c.stop.name + tag + ' [' + stopRole + '] (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
       arrivalsForStop(c.stop.name).slice(0, 2).forEach(function(a) {
-        lines.push('  → ' + a.shuttle.label + ' (' + a.shuttle.route + '): arrives in ' + a.etaMinutes + ' min, capacity ' + a.shuttle.capacity_pct + '%');
+        var totalMins = walkMins + a.etaMinutes;
+        var alternateNote = c.stop.name === selectedStop
+          ? ''
+          : ' If recommending this, say to walk to ' + c.stop.name + ' first; combined walk-plus-wait is about ' + totalMins + ' min.';
+        lines.push('  → ' + a.shuttle.label + ' (' + a.shuttle.route + '): bus arrives there in ' + a.etaMinutes + ' min, capacity ' + a.shuttle.capacity_pct + '%.' + alternateNote);
       });
     });
-    lines.push('When recommending a stop, prefer the RECOMMENDED one unless the user asks about a specific stop. Capacity shown is projected for when the shuttle arrives at that stop.');
+    lines.push('Nearby stop rule: never describe an alternate-stop bus as catchable from the selected origin. For alternate stops, include the walk and combined timing; otherwise use arrivals at selected origin ' + selectedStop + '. Capacity shown is projected for when the shuttle arrives at that stop.');
   }
   return lines.join('\n');
 }
@@ -2974,25 +3353,27 @@ async function sendMessage(prefilledMessage) {
   try {
     var msgs = [{role:'system', content: SYSTEM_PROMPT + '\n\n' + buildContext()}];
     chatHistory.slice(-10).forEach(function(m){ msgs.push({role:m.role, content:m.content}); });
+    var requestBody = {model:'gpt-4o-mini', messages:msgs, temperature:0.3, max_tokens:1200};
 
     var resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey},
-      body: JSON.stringify({model:'gpt-4o-mini', messages:msgs, temperature:0.3, max_tokens:800, response_format:{type:'json_object'}})
+      body: JSON.stringify(requestBody)
     });
     var data = await resp.json();
     if (data.error) throw new Error(data.error.message);
 
     var raw = data.choices[0].message.content;
-    var structured = null;
-    var clean = raw;
-    try {
-      structured = parseStructuredReply(raw);
-      clean = renderStructuredReply(structured) || escapeHtml(raw).replace(/\n/g,'<br>');
-    } catch(parseErr) {
+    var structured = tryParseStructuredReply(raw);
+    var clean = escapeHtml(raw || '').replace(/\n/g,'<br>');
+    if (structured) {
+      clean = renderStructuredReply(structured) || clean;
+    } else {
       var parsedFallback = parseDelay(raw);
-      clean = escapeHtml(parsedFallback.clean || raw).replace(/\n/g,'<br>');
-      structured = {delay_update: parsedFallback.shuttleId ? {shuttle_id: parsedFallback.shuttleId, delay_minutes: parsedFallback.mins} : null};
+      if (parsedFallback.shuttleId) {
+        clean = escapeHtml(parsedFallback.clean || raw).replace(/\n/g,'<br>');
+        structured = {delay_update: {shuttle_id: parsedFallback.shuttleId, delay_minutes: parsedFallback.mins}};
+      }
     }
     var assistantMemory = structured ? JSON.stringify(structured) : (raw || '');
     chatHistory.push({role:'assistant', content:assistantMemory, display:clean});
@@ -3319,7 +3700,7 @@ function toggleRouteFilter(routeName) {
 
 function updateMarkerVisual(s) {
   var boarding = s.dwell_seconds_remaining > 0;
-  var relevanceCls = s._relevantForStop === undefined ? '' : (s._relevantForStop ? ' relevant' : ' dim');
+  var relevanceCls = s._relevantForStop === undefined ? '' : (s._relevantForStop ? ' relevant' : '');
   var newCls = 'bus-marker ' + busColorClass(s.route) + (boarding ? ' boarding' : '') + relevanceCls;
 
   // Patch the existing DOM node's className instead of calling setIcon every frame.

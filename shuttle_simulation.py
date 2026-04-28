@@ -193,12 +193,7 @@ BC_ROUTES = {
         "stops": [
             { "name": "Newton – Stuart Hall", "lat": 42.34120257347508, "lon": -71.19375860329504 },
             { "name": "Newton – Main Gate", "lat": 42.34176656451543, "lon": -71.19274984496883 },
-            { "name": "Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 },
-            { "name": "Robsham Theater", "lat": 42.337657520927316, "lon": -71.16941654899645 },
-            { "name": "Conte Forum", "lat": 42.336034, "lon": -71.167059 },
-            { "name": "McElroy – Beacon St.", "lat": 42.333223, "lon": -71.170378 },
-            { "name": "College Road", "lat": 42.336401, "lon": -71.171620 },
-            { "name": "Newton – Duchesne", "lat": 42.34349297754804, "lon": -71.19076002050403 }
+            { "name": "Chestnut Hill – Main Gate", "lat": 42.338157, "lon": -71.170724 }
         ],
     },
 }
@@ -290,9 +285,17 @@ def _build_route_metrics(route: dict) -> dict:
 
 
 @st.cache_data
-def _cached_route_metrics(route_name: str) -> dict:
-    """Compute and cache route geometry — runs once per route per process lifetime."""
+def _cached_route_metrics(route_name: str, route_cache_key: tuple) -> dict:
+    """Compute and cache route geometry until the route path or stop list changes."""
+    del route_cache_key
     return _build_route_metrics(BC_ROUTES[route_name])
+
+
+def _route_cache_key(route: dict) -> tuple:
+    """Invalidate cached route metrics when a route path or stop list changes."""
+    path_key = tuple(route["path"])
+    stop_key = tuple((stop["name"], stop["lat"], stop["lon"]) for stop in route["stops"])
+    return path_key, stop_key
 
 
 def _nearest_progress_on_path(lat: float, lon: float, path: list[tuple[float, float]]) -> float:
@@ -381,7 +384,6 @@ def _stop_dwell_seconds(stop_name: str, capacity_pct: int = 50) -> int:
         "Chestnut Hill – Main Gate",
         "Robsham Theater",
         "Newton – Main Gate",
-        "Newton – Duchesne",
         "2000 Commonwealth Ave.",
     }:
         seconds = 22
@@ -433,7 +435,6 @@ STOP_CAPACITY_DELTA: dict[str, int] = {
     # Newton Campus Express
     "Newton – Stuart Hall": +22,      # Newton terminus, heavy boarding
     "Newton – Main Gate": +10,
-    "Newton – Duchesne": +8,
 }
 
 
@@ -445,7 +446,7 @@ def initialize_simulation_state() -> None:
     for route_name, route in BC_ROUTES.items():
         route_definitions[route_name] = {
             **route,
-            "metrics": _cached_route_metrics(route_name),
+            "metrics": _cached_route_metrics(route_name, _route_cache_key(route)),
         }
     st.session_state.route_definitions = route_definitions
     _log.info("Initialized route definitions for %d routes.", len(route_definitions))

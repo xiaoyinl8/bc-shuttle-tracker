@@ -212,7 +212,15 @@ def _build_suggested_questions() -> list[str]:
     profile = st.session_state.ai_user_profile
     selected_stop = st.session_state.user_stop
     destination_stop = st.session_state.get("destination_stop", "Conte Forum")
+    needs_destination = selected_stop == destination_stop
     suggestions: list[str] = []
+
+    if needs_destination:
+        suggestions.append(f"My destination is still set to {selected_stop}. What should I change it to?")
+        suggestions.append("Which destination stop should I choose for my trip?")
+        suggestions.append("What stops can I travel to from here?")
+        suggestions.append("How do I update my destination?")
+        return suggestions
 
     if not st.session_state.ai_chat_history:
         suggestions.append(f"When is the next shuttle from {selected_stop} to {destination_stop}?")
@@ -299,6 +307,7 @@ def _submit_user_message(user_input: str, api_key: str) -> str | None:
 def _build_context_payload() -> dict[str, Any]:
     selected = st.session_state.user_stop
     destination = st.session_state.get("destination_stop", "Conte Forum")
+    needs_destination = selected == destination
     now = datetime.now()
     eta = build_eta_prediction(selected)
     arrivals = get_stop_arrivals(selected)
@@ -380,6 +389,12 @@ def _build_context_payload() -> dict[str, Any]:
         "trip": {
             "origin_stop": selected,
             "destination_stop": destination,
+            "needs_destination": needs_destination,
+            "destination_status": (
+                "not_set_origin_matches_destination"
+                if needs_destination
+                else "set"
+            ),
             "shared_routes": sorted(
                 set(st.session_state.stops[selected]["routes"])
                 & set(st.session_state.stops.get(destination, {}).get("routes", []))
@@ -401,6 +416,7 @@ def _build_context_payload() -> dict[str, Any]:
                 "service_days": route["service_days"],
                 "service_window": route["service_window"],
                 "headway": route["headway"],
+                "stops": [stop["name"] for stop in route["stops"]],
             }
             for route_name, route in st.session_state.route_definitions.items()
         ],
@@ -426,6 +442,10 @@ predicted arrival windows, confidence scores, route alternatives, active delay a
 
 Rules:
 - Ground every answer in the provided JSON context.
+- If trip.needs_destination is true, do not recommend boarding a shuttle for a
+  trip. Tell the rider their destination matches their starting stop and ask
+  them to choose a different destination first. You may mention current arrivals
+  only as general stop information, not as a trip recommendation.
 - Recommend a concrete action when the user seems to need a decision.
 - Explain why using ETA, delay, crowding, route type, and confidence.
 - Use trip.origin_stop and trip.destination_stop when giving route-choice or boarding advice.
@@ -436,6 +456,14 @@ Rules:
 - Support what-if reasoning when relevant.
 - Keep the tone practical, calm, and student-friendly.
 - If information is missing, say that clearly.
+- Decide the response format yourself:
+  - Use plain text only when the user asks a follow-up explanation, asks about
+    confidence/uncertainty, asks how you reasoned, asks a general custom question,
+    or does not need an actionable shuttle card.
+  - Use the structured JSON schema only when the answer should create a rider
+    action card, such as a next-arrival check, route recommendation, comparison,
+    schedule/capacity decision, what-if trip plan, or explicit delay update.
+  - If you use plain text, do not include JSON, markdown headings, or schema labels.
 
 LOOP DIRECTION — CRITICAL:
 The Comm Ave All Stops route is a one-way loop. The direction is:
@@ -469,7 +497,7 @@ Shuttle IDs for delay updates:
 - newton-1 = Newton Express 1
 - newton-2 = Newton Express 2
 
-Respond with a single valid JSON object and no extra text. Use this schema:
+When a structured response is useful, respond with a single valid JSON object and no extra text. Use this schema:
 {
   "intent": "arrival_check|decision_help|delay_report|schedule|capacity|other",
   "summary": "2-3 sentence rider-facing summary",
@@ -499,8 +527,25 @@ Respond with a single valid JSON object and no extra text. Use this schema:
   }
 }
 
+For confidence.score, use a real 0-100 confidence score. Do not use 0 as a placeholder
+when label is high, medium, or low.
+
 Only set delay_update when the user explicitly reports or clears a delay. Otherwise set it to null.\
 """
+
+
+def _normalize_confidence_score(score: Any, label: Any) -> int | None:
+    try:
+        numeric_score = int(score)
+    except (TypeError, ValueError):
+        numeric_score = None
+
+    normalized_label = str(label).strip().lower() if label is not None else ""
+    if numeric_score == 0 and normalized_label in {"high", "medium", "low"}:
+        return None
+    if numeric_score is None:
+        return None
+    return max(0, min(100, numeric_score))
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -516,6 +561,27 @@ def _extract_json_object(text: str) -> dict[str, Any]:
         if not match:
             raise
         return json.loads(match.group(0))
+
+
+def _try_extract_structured_reply(text: str) -> dict[str, Any] | None:
+    cleaned = text.strip()
+    if not cleaned.startswith(("{", "```")):
+        return None
+    try:
+        payload = _extract_json_object(cleaned)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    structured_keys = {
+        "recommended_option",
+        "confidence",
+        "alternatives",
+        "what_if_options",
+        "proactive_alert",
+        "delay_update",
+    }
+    return payload if any(key in payload for key in structured_keys) else None
 
 
 def _normalize_delay_update(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -575,7 +641,7 @@ def _render_structured_reply(payload: dict[str, Any]) -> str:
         sections.append(reasoning_block)
 
     confidence = payload.get("confidence") or {}
-    confidence_score = confidence.get("score")
+    confidence_score = _normalize_confidence_score(confidence.get("score"), confidence.get("label"))
     confidence_label = confidence.get("label")
     confidence_explanation = confidence.get("explanation")
     if confidence_score is not None or confidence_explanation:
@@ -678,7 +744,6 @@ def _process_ai_response(api_key: str) -> None:
                 messages=messages,
                 temperature=0.3,
                 max_tokens=900,
-                response_format={"type": "json_object"},
             )
         except AuthenticationError:
             _log.error("OpenAI authentication failed — API key is invalid.")
@@ -690,7 +755,11 @@ def _process_ai_response(api_key: str) -> None:
             _log.error("OpenAI rejected the request: %s", exc)
             raise ValueError(f"Request rejected by OpenAI: {exc}")
     raw = response.choices[0].message.content
-    payload = _extract_json_object(raw)
+    payload = _try_extract_structured_reply(raw)
+    if not payload:
+        st.session_state.ai_chat_history.append({"role": "assistant", "content": raw.strip()})
+        return
+
     delay_data = _normalize_delay_update(payload)
     clean = _render_structured_reply(payload)
 
