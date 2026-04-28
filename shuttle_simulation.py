@@ -517,6 +517,9 @@ def initialize_simulation_state() -> None:
     if "user_stop" not in st.session_state or st.session_state.user_stop not in st.session_state.stops:
         st.session_state.user_stop = "Conte Forum"
 
+    if "destination_stop" not in st.session_state or st.session_state.destination_stop not in st.session_state.stops:
+        st.session_state.destination_stop = "Conte Forum"
+
     if "selected_route_filter" not in st.session_state:
         st.session_state.selected_route_filter = "All routes"
 

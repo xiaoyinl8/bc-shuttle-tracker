@@ -77,6 +77,12 @@ _CHAT_HISTORY_MAX = 40  # keep last 40 messages (20 turns) — enough context, p
 def _ensure_state() -> None:
     if "route_definitions" not in st.session_state:
         initialize_simulation_state()
+    if "destination_stop" not in st.session_state or st.session_state.destination_stop not in st.session_state.get("stops", {}):
+        st.session_state.destination_stop = (
+            "Conte Forum"
+            if "Conte Forum" in st.session_state.get("stops", {})
+            else st.session_state.get("user_stop", "")
+        )
     if "ai_chat_history" not in st.session_state:
         st.session_state.ai_chat_history = []
     if "ai_user_profile" not in st.session_state:
@@ -205,11 +211,12 @@ def _update_user_profile_from_message(user_input: str) -> None:
 def _build_suggested_questions() -> list[str]:
     profile = st.session_state.ai_user_profile
     selected_stop = st.session_state.user_stop
+    destination_stop = st.session_state.get("destination_stop", "Conte Forum")
     suggestions: list[str] = []
 
     if not st.session_state.ai_chat_history:
-        suggestions.append(f"When is the next shuttle to {selected_stop}?")
-        suggestions.append(f"Which shuttle should I take from {selected_stop} if I want the lowest-risk option?")
+        suggestions.append(f"When is the next shuttle from {selected_stop} to {destination_stop}?")
+        suggestions.append(f"Which shuttle should I take from {selected_stop} to {destination_stop} if I want the lowest-risk option?")
 
         if profile["avoids_crowded"]:
             suggestions.append("I prefer less crowded buses. Which option should I wait for?")
@@ -245,7 +252,7 @@ def _build_suggested_questions() -> list[str]:
         suggestions.append("How confident are you in that recommendation?")
 
         if selected_stop:
-            suggestions.append(f"Would your recommendation change if I started from {selected_stop}?")
+            suggestions.append(f"Would your recommendation change if I started from {selected_stop} and wanted to go to {destination_stop}?")
 
     deduped: list[str] = []
     for suggestion in suggestions:
@@ -291,6 +298,7 @@ def _submit_user_message(user_input: str, api_key: str) -> str | None:
 
 def _build_context_payload() -> dict[str, Any]:
     selected = st.session_state.user_stop
+    destination = st.session_state.get("destination_stop", "Conte Forum")
     now = datetime.now()
     eta = build_eta_prediction(selected)
     arrivals = get_stop_arrivals(selected)
@@ -368,6 +376,15 @@ def _build_context_payload() -> dict[str, Any]:
         "current_time": now.strftime("%I:%M %p"),
         "current_day_type": "weekday" if now.weekday() < 5 else "weekend",
         "selected_stop": selected,
+        "destination_stop": destination,
+        "trip": {
+            "origin_stop": selected,
+            "destination_stop": destination,
+            "shared_routes": sorted(
+                set(st.session_state.stops[selected]["routes"])
+                & set(st.session_state.stops.get(destination, {}).get("routes", []))
+            ),
+        },
         "user_profile": st.session_state.ai_user_profile,
         "prediction": {
             "min_eta": eta["min"],
@@ -411,6 +428,7 @@ Rules:
 - Ground every answer in the provided JSON context.
 - Recommend a concrete action when the user seems to need a decision.
 - Explain why using ETA, delay, crowding, route type, and confidence.
+- Use trip.origin_stop and trip.destination_stop when giving route-choice or boarding advice.
 - Use the service_schedule_reference data when reasoning about time-of-day frequency, likely service pattern, and whether Comm. Ave. Direct or Comm. Ave. All Stops is expected to be running.
 - Be transparent about uncertainty. Never present weak predictions as certain.
 - Personalize recommendations when user preferences are available.
@@ -824,9 +842,13 @@ def render_ai_assistant_panel() -> None:
 
     stop_names = sorted(st.session_state.stops.keys())
     current_stop = st.session_state.user_stop
+    current_destination = st.session_state.destination_stop
     embedded_stop = st.session_state.get("embedded_user_stop")
     if embedded_stop not in stop_names or embedded_stop != current_stop:
         st.session_state.embedded_user_stop = current_stop
+    embedded_destination = st.session_state.get("embedded_destination_stop")
+    if embedded_destination not in stop_names or embedded_destination != current_destination:
+        st.session_state.embedded_destination_stop = current_destination
     st.caption("Your stop")
     selected_stop = st.selectbox(
         "Your stop",
@@ -836,6 +858,16 @@ def render_ai_assistant_panel() -> None:
     )
     if selected_stop != st.session_state.user_stop:
         st.session_state.user_stop = selected_stop
+        st.rerun()
+    st.caption("Destination")
+    destination_stop = st.selectbox(
+        "Destination",
+        stop_names,
+        key="embedded_destination_stop",
+        label_visibility="collapsed",
+    )
+    if destination_stop != st.session_state.destination_stop:
+        st.session_state.destination_stop = destination_stop
         st.rerun()
 
     if not api_key:

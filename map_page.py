@@ -26,6 +26,60 @@ st.set_page_config(
 apply_shared_styles()
 
 
+def apply_fullscreen_shell_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        #MainMenu,
+        header,
+        header[data-testid="stHeader"],
+        [data-testid="stHeader"],
+        [data-testid="stAppHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"],
+        [data-testid="collapsedControl"],
+        footer {
+          display:none !important;
+          height:0 !important;
+          min-height:0 !important;
+          visibility:hidden !important;
+        }
+        html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+          margin:0 !important;
+          padding:0 !important;
+          height:100dvh !important;
+          overflow:hidden !important;
+        }
+        .stMain,
+        .stMainBlockContainer,
+        .block-container,
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stAppViewBlockContainer"],
+        [data-testid="block-container"] {
+          margin:0 !important;
+          padding:0 !important;
+          max-width:100% !important;
+        }
+        section[data-testid="stMain"] {
+          top:0 !important;
+          padding-top:0 !important;
+        }
+        section[data-testid="stMain"] > div {
+          padding-top:0 !important;
+          margin-top:0 !important;
+        }
+        [data-testid="stAppViewContainer"] > .main,
+        [data-testid="stMain"] > div {
+          padding-top:0 !important;
+          margin-top:0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def initialize_app_state() -> None:
     initialize_simulation_state()
 
@@ -39,16 +93,24 @@ def _sync_selected_stop_from_query() -> None:
 
 
 def show_onboarding() -> None:
+    apply_fullscreen_shell_styles()
     st.markdown(
         """
         <style>
-        html, body, .stApp {
+        html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+          margin: 0 !important;
+          padding: 0 !important;
           height: 100vh;
           overflow: hidden !important;
         }
-        .stMainBlockContainer {
+        .stMainBlockContainer,
+        .block-container,
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stAppViewBlockContainer"],
+        [data-testid="block-container"] {
           max-width: 100% !important;
           padding: 0 !important;
+          margin: 0 !important;
         }
         @keyframes gradientShift {
           0%   { background-position: 0% 50%; }
@@ -248,6 +310,9 @@ def show_onboarding() -> None:
 
 
 def build_map_payload(selected_stop: str) -> dict:
+    destination_stop = st.session_state.get("destination_stop", "Conte Forum")
+    if destination_stop not in st.session_state.stops:
+        destination_stop = selected_stop
     routes = {}
     for route_name, route in st.session_state.route_definitions.items():
         ordered_stops = sorted(
@@ -293,7 +358,9 @@ def build_map_payload(selected_stop: str) -> dict:
 
     return {
         "selected_stop": selected_stop,
+        "destination_stop": destination_stop,
         "selected_coords": st.session_state.stops[selected_stop],
+        "destination_coords": st.session_state.stops[destination_stop],
         "selected_route_filter": st.session_state.selected_route_filter,
         "routes": routes,
         "shuttles": shuttles,
@@ -896,16 +963,27 @@ _AI_SYSTEM_PROMPT = (
     "You have access to live shuttle data injected below. Always use that data when answering. "
     "Capabilities: answer questions about next arrivals, ETAs, capacity, and delays; "
     "accept delay reports from users and update the system; summarize the shuttle schedule. "
+    "When the user has selected both an origin stop and destination stop, plan around that trip. "
     "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
-    "When a user reports or clears a delay, append at the very end of your reply EXACTLY: "
-    "DELAY_UPDATE:{shuttle_id:SHUTTLE_ID,delay_minutes:NUMBER} "
-    "Use delay_minutes 0 to clear. Only include this when the user explicitly reports or clears a delay. "
-    "Be friendly, concise, and accurate."
+    "Respond with one valid JSON object and no extra text. Use this schema: "
+    "{"
+    "\"summary\":\"2 short sentences\","
+    "\"recommended_option\":{\"action\":\"short recommendation\",\"route\":\"route or null\",\"bus\":\"bus label or null\",\"eta_minutes\":0,\"reasoning\":[\"reason\"]},"
+    "\"confidence\":{\"score\":0,\"label\":\"high|medium|low\",\"explanation\":\"plain-language uncertainty explanation\"},"
+    "\"alternatives\":[{\"action\":\"backup option\",\"tradeoff\":\"brief tradeoff\"}],"
+    "\"what_if_options\":[{\"scenario\":\"what if case\",\"outcome\":\"expected outcome\"}],"
+    "\"proactive_alert\":\"short heads-up or null\","
+    "\"follow_up_question\":\"optional next question or null\","
+    "\"delay_update\":{\"shuttle_id\":\"comm-1\",\"delay_minutes\":0}"
+    "}. "
+    "Use JSON null for proactive_alert or follow_up_question when there is nothing useful to say; never write phrases like 'none at this time'. "
+    "Only set delay_update when the user explicitly reports or clears a delay; otherwise set it to null. "
+    "Be friendly, concise, explain the why, and include confidence."
 )
 
 
 def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  # noqa: PLR0915 (long but intentional)
-    TOTAL_H = 900   # iframe height attr; position:fixed CSS overrides this to 100vh at runtime
+    TOTAL_H = 900   # iframe needs real render space; CSS below removes its wrapper from page flow
     payload = build_map_payload(selected_stop)
     ensure_ai_state()
     # Inject data as JSON into a separate <script> block so the HTML template
@@ -920,10 +998,18 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     show_ai_panel_json = json.dumps(show_ai_panel)
     ai_chat_history_json = json.dumps(st.session_state.ai_chat_history)
     embedded_ai_error_json = json.dumps(st.session_state.get("embedded_ai_error", ""))
+    destination_stop = payload["destination_stop"]
     stop_options = "".join(
         '<option value="{v}"{sel}>{v}</option>'.format(
             v=name,
             sel=" selected" if name == selected_stop else "",
+        )
+        for name in sorted(st.session_state.stops.keys())
+    )
+    destination_options = "".join(
+        '<option value="{v}"{sel}>{v}</option>'.format(
+            v=name,
+            sel=" selected" if name == destination_stop else "",
         )
         for name in sorted(st.session_state.stops.keys())
     )
@@ -960,7 +1046,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #app {display:flex;width:100%;overflow:hidden;}
 
   /* AI panel */
-  #ai-panel {width:420px;min-width:260px;max-width:70%;
+  #ai-panel {width:420px;min-width:260px;max-width:70%;position:relative;
     display:flex;flex-direction:column;background:#1e293b;border-right:1px solid #334155;overflow:hidden;}
   #ai-header {padding:12px 14px 10px;border-bottom:1px solid #334155;flex-shrink:0;
     background:linear-gradient(180deg,#1e3a5f 0%,#1e293b 100%);}
@@ -975,11 +1061,11 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #clear-btn {background:#374151;color:#9ca3af;border:none;padding:6px 10px;
     border-radius:6px;cursor:pointer;font-size:13px;flex-shrink:0;}
   #clear-btn:hover {background:#4b5563;color:#f1f5f9;}
-  #stop-row  {display:flex;align-items:center;gap:6px;}
-  #stop-lbl  {font-size:11px;color:#64748b;white-space:nowrap;}
-  #stop-sel  {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
+  .stop-row  {display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .stop-lbl  {font-size:11px;color:#64748b;white-space:nowrap;width:74px;}
+  #stop-sel, #dest-sel  {flex:1;min-width:0;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
     padding:4px 8px;border-radius:6px;font-size:12px;outline:none;}
-  #chat-box  {flex:1;min-height:0;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;}
+  #chat-box  {flex:1;min-height:0;overflow-y:auto;padding:10px 10px 286px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth;}
   #chat-box::-webkit-scrollbar {width:4px;}
   #chat-box::-webkit-scrollbar-thumb {background:#334155;border-radius:2px;}
   .msg-user  {align-self:flex-end;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:9px 13px;
@@ -990,13 +1076,33 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     box-shadow:0 2px 8px rgba(0,0,0,.22);}
   .msg-err   {align-self:center;background:#7f1d1d;color:#fca5a5;padding:6px 10px;
     border-radius:8px;font-size:12px;max-width:90%;}
-  .placeholder {color:#475569;font-size:12px;text-align:center;padding:20px 10px;line-height:1.9;}
-  #suggestions {padding:8px 10px 10px;border-top:1px solid rgba(51,65,85,.65);flex-shrink:0;}
-  .suggest-label {font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px;}
-  .suggest-grid {display:flex;flex-wrap:wrap;gap:8px;}
-  .suggest-chip {border:1px solid #334155;background:#0f172a;color:#cbd5e1;padding:8px 10px;border-radius:999px;
-    font-size:12px;line-height:1.35;cursor:pointer;transition:background .15s ease,transform .15s ease,color .15s ease,box-shadow .15s ease,border-color .15s ease;}
-  .suggest-chip:hover {background:#1d4ed8;color:#fff;transform:translateY(-2px) scale(1.03);border-color:#3b82f6;box-shadow:0 4px 12px rgba(29,78,216,.35);}
+  .ai-structured {display:flex;flex-direction:column;gap:9px;}
+  .ai-section {border-top:1px solid rgba(148,163,184,.2);padding-top:8px;}
+  .ai-section:first-child {border-top:none;padding-top:0;}
+  .ai-section-title {font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd;margin-bottom:4px;}
+  .ai-section-main {font-weight:800;color:#f8fafc;}
+  .ai-section-detail {color:#cbd5e1;font-size:12px;margin-top:3px;}
+  .ai-list {margin:5px 0 0 15px;color:#dbeafe;}
+  .ai-list li {margin-top:3px;}
+  .ai-pill-row {display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .ai-pill {display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#0f172a;border:1px solid #334155;color:#bfdbfe;font-size:11px;font-weight:800;}
+  .ai-alert {background:#422006;border:1px solid #f59e0b;color:#fde68a;border-radius:10px;padding:8px 10px;font-size:12px;}
+  #ai-heads-up {display:none;}
+  #suggestions {position:absolute;left:10px;right:10px;bottom:62px;z-index:20;padding:12px;
+    border:1px solid rgba(96,165,250,.35);border-radius:16px;background:rgba(15,23,42,.84);
+    box-shadow:0 14px 34px rgba(15,23,42,.28),inset 0 1px 0 rgba(255,255,255,.08);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);max-height:220px;overflow-y:auto;}
+  #suggestions:empty {display:none;}
+  #suggestions::-webkit-scrollbar {width:4px;}
+  #suggestions::-webkit-scrollbar-thumb {background:rgba(147,197,253,.45);border-radius:999px;}
+  .suggest-label {font-size:10px;font-weight:900;color:#93c5fd;margin-bottom:8px;letter-spacing:.08em;text-transform:uppercase;}
+  .suggest-grid {display:flex;flex-direction:column;gap:8px;}
+  .suggest-chip {width:100%;border:1px solid rgba(147,197,253,.45);text-align:left;
+    background:linear-gradient(180deg,rgba(30,64,175,.28),rgba(15,23,42,.92));color:#e0f2fe;
+    padding:10px 12px;border-radius:12px;font-size:12px;line-height:1.32;cursor:pointer;
+    box-shadow:0 6px 18px rgba(15,23,42,.2);
+    transition:background .15s ease,transform .15s ease,color .15s ease,box-shadow .15s ease,border-color .15s ease;}
+  .suggest-chip:hover {background:#2563eb;color:#fff;transform:translateX(3px);border-color:#93c5fd;box-shadow:0 8px 22px rgba(37,99,235,.35);}
   .delay-ok  {display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
     font-size:11px;font-weight:700;background:#d1fae5;color:#065f46;}
   .delay-warn{display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;
@@ -1059,12 +1165,6 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .profile-delete {background:#fee2e2;color:#dc2626;border:none;border-radius:10px;
     padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;margin-right:auto;}
   .profile-delete:hover {background:#fecaca;}
-  #profile-hint {margin:6px 9px 0;padding:10px 12px;border-radius:10px;background:#1e3a5f;
-    border:1px dashed #3b82f6;font-size:12px;color:#93c5fd;display:flex;align-items:center;
-    gap:8px;cursor:pointer;flex-shrink:0;}
-  #profile-hint:hover {background:#1e40af;}
-  #profile-hint .ph-icon {font-size:18px;flex-shrink:0;}
-  #profile-hint b {color:#e2e8f0;}
   #upload-btn {background:#1e293b;border:1px solid #3b82f6;padding:7px 10px;
     border-radius:8px;cursor:pointer;font-size:12px;flex-shrink:0;line-height:1;
     color:#93c5fd;font-weight:700;display:flex;align-items:center;gap:4px;}
@@ -1081,9 +1181,6 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #toast {background:#ffffff;color:#0f172a;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12);}
   body.light-mode #toast.t-success {background:#dcfce7;color:#15803d;border-color:#16a34a;}
   body.light-mode #toast.t-warn    {background:#fef3c7;color:#92400e;border-color:#d97706;}
-  body.light-mode #profile-hint {background:#dbeafe;border-color:#3b82f6;color:#1e40af;}
-  body.light-mode #profile-hint:hover {background:#bfdbfe;}
-  body.light-mode #profile-hint b {color:#1e3a5f;}
   body.light-mode #upload-btn {background:#eff6ff;border-color:#3b82f6;color:#1d4ed8;}
   body.light-mode #upload-btn:hover {background:#dbeafe;color:#1e40af;}
   #theme-btn {background:none;border:1px solid #334155;font-size:15px;cursor:pointer;
@@ -1103,15 +1200,20 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   body.light-mode #server-key-note {background:#dcfce7;border-color:#16a34a;color:#15803d;}
   body.light-mode #clear-btn {background:#e2e8f0;color:#475569;}
   body.light-mode #clear-btn:hover {background:#cbd5e1;color:#0f172a;}
-  body.light-mode #stop-lbl {color:#64748b;}
-  body.light-mode #stop-sel {background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
+  body.light-mode .stop-lbl {color:#64748b;}
+  body.light-mode #stop-sel, body.light-mode #dest-sel {background:#f8fafc;border-color:#cbd5e1;color:#0f172a;}
   body.light-mode #chat-box::-webkit-scrollbar-thumb {background:#cbd5e1;}
   body.light-mode .msg-ai {background:#dbeafe;color:#1e3a5f;}
-  body.light-mode .placeholder {color:#94a3b8;}
-  body.light-mode #suggestions {border-top-color:#e2e8f0;}
-  body.light-mode .suggest-label {color:#64748b;}
+  body.light-mode .ai-section {border-top-color:#bfdbfe;}
+  body.light-mode .ai-section-title {color:#1d4ed8;}
+  body.light-mode .ai-section-main {color:#0f172a;}
+  body.light-mode .ai-section-detail, body.light-mode .ai-list {color:#334155;}
+  body.light-mode .ai-pill {background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
+  body.light-mode .ai-alert {background:#fffbeb;border-color:#f59e0b;color:#92400e;}
+  body.light-mode #suggestions {background:rgba(255,255,255,.9);border-color:#bfdbfe;box-shadow:0 14px 34px rgba(37,99,235,.12),inset 0 1px 0 rgba(255,255,255,.9);}
+  body.light-mode .suggest-label {color:#2563eb;}
   body.light-mode .suggest-chip {background:#f8fafc;border-color:#cbd5e1;color:#334155;}
-  body.light-mode .suggest-chip:hover {background:#2563eb;color:#fff;border-color:#2563eb;transform:translateY(-2px) scale(1.03);box-shadow:0 4px 12px rgba(37,99,235,.3);}
+  body.light-mode .suggest-chip:hover {background:#2563eb;color:#fff;border-color:#2563eb;transform:translateX(3px);box-shadow:0 6px 16px rgba(37,99,235,.28);}
   body.light-mode #thinking {background:#dbeafe;}
   body.light-mode .dot {background:#64748b;}
   body.light-mode #input-row {border-top-color:#cbd5e1;}
@@ -1179,6 +1281,19 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     background:#0c2340;border-bottom:1px solid #1d4ed8;font-size:12px;
     color:#93c5fd;flex-shrink:0;}
   #loc-banner b {color:#e2e8f0;}
+  #map-wrap {position:relative;min-width:0;overflow:hidden;}
+  #map-alert {position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:900;
+    width:min(620px,calc(100% - 32px));display:none;align-items:flex-start;gap:10px;
+    padding:12px 14px;border-radius:16px;background:rgba(255,251,235,.96);
+    border:1px solid rgba(245,158,11,.75);color:#92400e;box-shadow:0 18px 40px rgba(15,23,42,.22);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+  #map-alert.show {display:flex;}
+  #map-alert .alert-dot {width:10px;height:10px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.18);margin-top:4px;flex-shrink:0;}
+  #map-alert .alert-body {min-width:0;font-size:13px;line-height:1.42;}
+  #map-alert .alert-title {font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#78350f;margin-bottom:2px;}
+  #map-alert-close {border:none;background:rgba(146,64,14,.1);color:#78350f;border-radius:999px;width:24px;height:24px;cursor:pointer;
+    font-size:16px;line-height:1;flex-shrink:0;margin-left:auto;}
+  #map-alert-close:hover {background:rgba(146,64,14,.18);}
   .loc-dot {width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block;}
   .loc-dist {margin-left:auto;color:#64748b;font-size:11px;white-space:nowrap;}
   .loc-center-btn {margin-left:8px;background:#1d4ed8;color:#fff;border:none;padding:3px 9px;
@@ -1190,6 +1305,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #locate-btn.tracking {border-color:#3b82f6;color:#3b82f6;}
   body.light-mode #loc-banner {background:#dbeafe;border-bottom-color:#93c5fd;color:#1e40af;}
   body.light-mode #loc-banner b {color:#1e3a5f;}
+  body.light-mode #map-alert {background:rgba(255,251,235,.96);}
   body.light-mode .loc-dist {color:#94a3b8;}
   body.light-mode #locate-btn {border-color:#cbd5e1;color:#64748b;}
   body.light-mode #locate-btn:hover {background:rgba(0,0,0,.06);color:#0f172a;}
@@ -1209,7 +1325,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     display:flex;align-items:center;gap:12px;flex-shrink:0;height:44px;}
   #map-header h2 {font-size:15px;font-weight:700;color:#f1f5f9;}
   #map-header span {font-size:11px;color:#64748b;}
-  #map-body   {display:grid;grid-template-columns:1fr 240px;overflow:hidden;}
+  #map-body   {display:grid;grid-template-columns:minmax(0,1fr) 300px;overflow:hidden;}
   #map        {width:100%;}
   #route-side {background:#1e293b;overflow-y:auto;padding:12px;
     font-family:sans-serif;font-size:12px;color:#f1f5f9;border-left:1px solid #334155;}
@@ -1332,20 +1448,19 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     #ai-header {padding:10px 12px 8px;}
     #ai-title {margin-bottom:6px;}
     #key-row {margin-bottom:6px;}
-    #chat-box {padding:8px;gap:6px;}
+    #chat-box {padding:8px 8px 238px;gap:6px;}
     .msg-user, .msg-ai {font-size:12px;padding:7px 10px;}
-    #suggestions {padding:6px 8px 8px;}
+    #suggestions {left:8px;right:8px;bottom:58px;padding:9px;border-radius:14px;max-height:178px;}
     .suggest-label {margin-bottom:6px;}
     .suggest-grid {gap:6px;}
     .suggest-chip {padding:6px 9px;font-size:11px;}
-    #profile-hint {margin:4px 8px 0;padding:8px 10px;font-size:11px;}
     #input-row {padding:8px;gap:5px;}
     #user-inp, #send-btn, #upload-btn {font-size:12px;}
     #map-header {padding:8px 12px;height:40px;gap:8px;}
     #map-header h2 {font-size:14px;}
     #map-header span {font-size:10px;}
     #loc-banner {padding:6px 12px;font-size:11px;}
-    #map-body {grid-template-columns:1fr 220px;}
+    #map-body {grid-template-columns:minmax(0,1fr) 285px;}
     #route-side {padding:10px;font-size:11px;}
     #route-side h3 {font-size:13px;margin:6px 0 5px;}
     .card {padding:12px 12px 11px;margin-bottom:8px;border-radius:12px;}
@@ -1383,28 +1498,20 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <input id="api-key-inp" type="password" placeholder="Enter your OpenAI API key…"/>
         <button id="clear-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
       </div>
-      <div id="stop-row">
-        <span id="stop-lbl">Your stop:</span>
+      <div class="stop-row">
+        <span class="stop-lbl">Your stop:</span>
         <select id="stop-sel" onchange="onStopChange(this.value)">STOP_OPTIONS_PLACEHOLDER</select>
+      </div>
+      <div class="stop-row">
+        <span class="stop-lbl">Destination:</span>
+        <select id="dest-sel" onchange="onDestinationChange(this.value)">DESTINATION_OPTIONS_PLACEHOLDER</select>
       </div>
     </div>
     <div id="stop-ctx">
       <div id="stop-ctx-name">Loading…</div>
       <div id="stop-ctx-rows"></div>
     </div>
-    <div id="profile-hint" onclick="openProfileModal()">
-      <span class="ph-icon">👤</span>
-      <span><b>Set up your Rider Profile</b> — personalized suggestions &amp; class schedule planning.</span>
-    </div>
-    <div id="chat-box">
-      <div class="placeholder">💡 Try asking:<br>
-        "When's the next shuttle to Conte Forum?"<br>
-        "Newton express is 10 minutes late."<br>
-        "How crowded is the Comm Ave shuttle?"<br><br>
-        📅 Tap <b>👤 Profile</b> below to upload your class schedule and ask:<br>
-        "Which shuttle for my 9am Monday class?"
-      </div>
-    </div>
+    <div id="chat-box"></div>
     <div id="suggestions"></div>
     <input id="schedule-file" type="file" accept="image/*" style="display:none"/>
     <div id="schedule-badge" style="display:none">
@@ -1434,7 +1541,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     </div>
     <div id="loc-banner"></div>
     <div id="map-body">
-      <div id="map" style="width:100%;"></div>
+      <div id="map-wrap">
+        <div id="map-alert"></div>
+        <div id="map" style="width:100%;"></div>
+      </div>
       <div id="route-side">
         <h3 id="loc-rec-title" style="display:none;">Near You</h3>
         <div id="loc-rec" style="display:none;"></div>
@@ -1649,6 +1759,15 @@ function capacityPeopleHtml(capacityPct) {
 // ── fit everything to the actual window height ────────────────────────────────
 function applyHeight() {
   var h = window.innerHeight;
+  try {
+    if (window.parent && window.parent !== window && window.parent.innerHeight) {
+      var parentFrame = window.frameElement;
+      var frameTop = parentFrame ? parentFrame.getBoundingClientRect().top : 0;
+      h = Math.min(h, Math.max(420, window.parent.innerHeight - frameTop));
+    }
+  } catch (error) {
+    // Cross-frame sizing is best-effort; fall back to the iframe viewport.
+  }
   var bannerEl = document.getElementById('loc-banner');
   var headerEl = document.getElementById('map-header');
   var bannerH = (bannerEl && bannerEl.offsetHeight > 0) ? bannerEl.offsetHeight : 0;
@@ -1659,6 +1778,7 @@ function applyHeight() {
   document.getElementById('drag-handle').style.height = h + 'px';
   document.getElementById('map-panel').style.height   = h + 'px';
   document.getElementById('map-body').style.height    = mapH + 'px';
+  document.getElementById('map-wrap').style.height    = mapH + 'px';
   document.getElementById('map').style.height         = mapH + 'px';
   document.getElementById('route-side').style.height  = mapH + 'px';
   if (typeof leafletMap !== 'undefined' && leafletMap) {
@@ -1691,6 +1811,8 @@ document.addEventListener('mouseup', function(){ dragging=false; handle.classLis
 
 // ── chat ─────────────────────────────────────────────────────────────────────
 var selectedStop = mapPayload.selected_stop;
+var destinationStop = mapPayload.destination_stop || selectedStop;
+var dismissedMapAlertText = '';
 var hasUserSelectedStopManually = false;
 var hasAutoSelectedNearestStop = false;
 var stopSectionVisible = false; // hidden until user actively selects a stop
@@ -2065,11 +2187,6 @@ function syncProfileUi() {
     scheduleStatus.textContent = 'No schedule uploaded yet.';
   }
 
-  // Hide the profile hint once a name is set or schedule is loaded
-  var hint = document.getElementById('profile-hint');
-  if (hint) {
-    hint.style.display = (userProfile.nickname || userSchedule) ? 'none' : 'flex';
-  }
 }
 
 function openProfileModal() {
@@ -2108,6 +2225,7 @@ function saveProfile() {
   saveProfileToStorage();
   syncProfileUi();
   renderSuggestedQuestions();
+  renderProactiveAlert();
   closeProfileModal();
   showToast(isNew ? '✅ Rider profile created' : '✅ Rider profile updated', 'success');
 }
@@ -2118,6 +2236,7 @@ function deleteProfile() {
   saveProfileToStorage();
   syncProfileUi();
   renderSuggestedQuestions();
+  renderProactiveAlert();
   closeProfileModal();
   showToast('🗑️ Rider profile deleted', 'warn');
 }
@@ -2143,7 +2262,7 @@ function buildSuggestedQuestions() {
   var intro = personalizedIntro();
   // Always surface a location-based suggestion when GPS is active
   if (userLatLng) {
-    suggestions.push("Based on my current location, which shuttle should I take right now?");
+    suggestions.push("Based on my current location, which shuttle should I take to " + destinationStop + " right now?");
   }
   var maxWait = String(userProfile.max_wait_minutes || '10');
   var preferredRoute = preferredRouteText();
@@ -2160,14 +2279,14 @@ function buildSuggestedQuestions() {
     }
 
     if (userProfile.timing_style === 'early') {
-      suggestions.push(intro + "which shuttle should I take from " + selectedStop + " if I never want to be late?");
+      suggestions.push(intro + "which shuttle should I take from " + selectedStop + " to " + destinationStop + " if I never want to be late?");
       suggestions.push("Which option gives me the safest arrival buffer for my next trip?");
     } else if (userProfile.timing_style === 'procrastinate') {
-      suggestions.push(intro + "what is the latest shuttle I can take from " + selectedStop + " without cutting it too close?");
+      suggestions.push(intro + "what is the latest shuttle I can take from " + selectedStop + " to " + destinationStop + " without cutting it too close?");
       suggestions.push("Can you help me leave as late as possible but still make it on time?");
     } else {
-      suggestions.push("When is the next shuttle to " + selectedStop + "?");
-      suggestions.push("Which shuttle should I take from " + selectedStop + " if I want the lowest-risk option?");
+      suggestions.push("When is the next shuttle from " + selectedStop + " to " + destinationStop + "?");
+      suggestions.push("Which shuttle should I take from " + selectedStop + " to " + destinationStop + " if I want the lowest-risk option?");
     }
 
     if (userProfile.crowd_style === 'avoid_crowds') {
@@ -2226,7 +2345,7 @@ function buildSuggestedQuestions() {
         suggestions.push("Which shuttle should I take for my next class?");
       }
     } else {
-      suggestions.push("Would your recommendation change if I started from " + selectedStop + "?");
+      suggestions.push("Would your recommendation change if I started from " + selectedStop + " and wanted to go to " + destinationStop + "?");
     }
   }
   return suggestions.filter(function(item, index, arr) {
@@ -2243,7 +2362,7 @@ function renderSuggestedQuestions() {
     return;
   }
 
-  var label = chatHistory.length ? 'Keep exploring' : 'Suggested starters';
+  var label = chatHistory.length ? 'Next suggested questions' : 'Suggested for this trip';
   root.innerHTML =
     '<div class="suggest-label">' + escapeHtml(label) + '</div>' +
     '<div class="suggest-grid">' +
@@ -2259,11 +2378,177 @@ function renderSuggestedQuestions() {
   });
 }
 
+function buildProactiveAlert() {
+  var originArrivals = arrivalsForStop(selectedStop);
+  var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
+    return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
+  });
+  if (!sharedRoutes.length) {
+    return 'No direct route currently serves both ' + selectedStop + ' and ' + destinationStop + '. Ask AI for the lowest-risk transfer or walking plan.';
+  }
+  if (!originArrivals.length) {
+    return 'No live arrivals are visible for ' + selectedStop + ' right now. Ask AI for backup stops near you.';
+  }
+
+  var best = originArrivals[0];
+  var backup = originArrivals[1];
+  if (best.shuttle.delay_minutes >= 5) {
+    return best.shuttle.label + ' is running about ' + best.shuttle.delay_minutes + ' minutes late. Check whether the next option is safer before leaving.';
+  }
+  if (best.shuttle.capacity_pct >= 85) {
+    if (backup && backup.shuttle.capacity_pct <= best.shuttle.capacity_pct - 20 && backup.etaMinutes - best.etaMinutes <= 8) {
+      return best.shuttle.label + ' arrives in ' + best.etaMinutes + ' min but is ' + best.shuttle.capacity_pct + '% full. Waiting ' + (backup.etaMinutes - best.etaMinutes) + ' more min may be more comfortable.';
+    }
+    return best.shuttle.label + ' is very crowded at ' + best.shuttle.capacity_pct + '%. Board promptly if timing matters, or ask AI for a less crowded option.';
+  }
+  if (backup && backup.etaMinutes - best.etaMinutes <= 4 && backup.shuttle.capacity_pct + 20 < best.shuttle.capacity_pct) {
+    return 'A less crowded backup is close: ' + backup.shuttle.label + ' is only ' + (backup.etaMinutes - best.etaMinutes) + ' min later and about ' + backup.shuttle.capacity_pct + '% full.';
+  }
+  if (userLatLng) {
+    var nearStops = nearestStopsToUser(userLatLng[0], userLatLng[1], 3);
+    var recommended = nearStops.find(function(candidate) {
+      return candidate.stop.name !== selectedStop && arrivalsForStop(candidate.stop.name).length;
+    });
+    if (recommended && recommended.dist < 220) {
+      return recommended.stop.name + ' is also nearby and has live service. Ask AI to compare it with ' + selectedStop + ' for this trip.';
+    }
+  }
+  return '';
+}
+
+function renderProactiveAlert() {
+  var alertEl = document.getElementById('map-alert');
+  var alert = buildProactiveAlert();
+  if (!alertEl) return;
+  if (!alert || alert === dismissedMapAlertText) {
+    alertEl.className = '';
+    alertEl.innerHTML = '';
+    return;
+  }
+  alertEl.className = 'show';
+  alertEl.innerHTML =
+    '<span class="alert-dot" aria-hidden="true"></span>' +
+    '<div class="alert-body"><div class="alert-title">AI Heads Up</div>' + escapeHtml(alert) + '</div>' +
+    '<button id="map-alert-close" type="button" title="Dismiss AI heads up" onclick="dismissMapAlert()">×</button>';
+}
+
+function dismissMapAlert() {
+  var alert = buildProactiveAlert();
+  dismissedMapAlertText = alert || '';
+  renderProactiveAlert();
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function meaningfulText(value) {
+  if (value === null || value === undefined) return '';
+  var text = String(value).trim();
+  if (!text) return '';
+  var normalized = text.toLowerCase().replace(/[.!?\s]+$/g, '');
+  var emptyPhrases = [
+    'none',
+    'none at this time',
+    'no alert',
+    'no alerts',
+    'no proactive alert',
+    'not applicable',
+    'n/a',
+    'null'
+  ];
+  return emptyPhrases.indexOf(normalized) === -1 ? text : '';
+}
+
+function parseStructuredReply(raw) {
+  var text = (raw || '').trim();
+  if (text.indexOf('```') === 0) {
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    var start = text.indexOf('{');
+    var end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+    throw error;
+  }
+}
+
+function renderStructuredReply(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  var html = '<div class="ai-structured">';
+  var summaryText = meaningfulText(payload.summary);
+  if (summaryText) {
+    html += '<div class="ai-section"><div class="ai-section-main">' + escapeHtml(summaryText) + '</div></div>';
+  }
+
+  var rec = payload.recommended_option || {};
+  if (rec.action || rec.route || rec.bus || rec.eta_minutes) {
+    html += '<div class="ai-section"><div class="ai-section-title">Recommendation</div>';
+    html += '<div class="ai-section-main">' + escapeHtml(String(rec.action || 'Check the live arrivals before leaving.')) + '</div>';
+    var pills = [];
+    if (rec.bus) pills.push(rec.bus);
+    if (rec.route) pills.push(rec.route);
+    if (Number(rec.eta_minutes) > 0) pills.push('~' + rec.eta_minutes + ' min');
+    if (pills.length) {
+      html += '<div class="ai-pill-row">' + pills.map(function(item) {
+        return '<span class="ai-pill">' + escapeHtml(String(item)) + '</span>';
+      }).join('') + '</div>';
+    }
+    var reasons = safeArray(rec.reasoning).slice(0, 3);
+    if (reasons.length) {
+      html += '<ul class="ai-list">' + reasons.map(function(item) { return '<li>' + escapeHtml(String(item)) + '</li>'; }).join('') + '</ul>';
+    }
+    html += '</div>';
+  }
+
+  var conf = payload.confidence || {};
+  if (conf.score !== undefined || conf.explanation) {
+    var label = conf.label ? String(conf.label).replace(/^\w/, function(c){ return c.toUpperCase(); }) : 'Confidence';
+    if (conf.score !== undefined && conf.score !== null) label += ' (' + conf.score + '%)';
+    html += '<div class="ai-section"><div class="ai-section-title">Uncertainty</div><div class="ai-section-main">' + escapeHtml(label) + '</div>';
+    if (conf.explanation) html += '<div class="ai-section-detail">' + escapeHtml(String(conf.explanation)) + '</div>';
+    html += '</div>';
+  }
+
+  var alternatives = safeArray(payload.alternatives).slice(0, 2);
+  if (alternatives.length) {
+    html += '<div class="ai-section"><div class="ai-section-title">Backup Options</div><ul class="ai-list">';
+    alternatives.forEach(function(item) {
+      var line = item.action || '';
+      if (item.tradeoff) line += ' (' + item.tradeoff + ')';
+      if (line) html += '<li>' + escapeHtml(String(line)) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  var whatIf = safeArray(payload.what_if_options).slice(0, 2);
+  if (whatIf.length) {
+    html += '<div class="ai-section"><div class="ai-section-title">What If</div><ul class="ai-list">';
+    whatIf.forEach(function(item) {
+      var line = item.scenario && item.outcome ? item.scenario + ': ' + item.outcome : (item.outcome || item.scenario || '');
+      if (line) html += '<li>' + escapeHtml(String(line)) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  var proactiveText = meaningfulText(payload.proactive_alert);
+  if (proactiveText) {
+    html += '<div class="ai-alert">' + escapeHtml(proactiveText) + '</div>';
+  }
+  var followUpText = meaningfulText(payload.follow_up_question);
+  if (followUpText) {
+    html += '<div class="ai-section"><div class="ai-section-title">Next Question</div><div class="ai-section-detail">' + escapeHtml(followUpText) + '</div></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function appendMsg(role, html, badgeText, badgeOk) {
   var box = document.getElementById('chat-box');
-  // remove placeholder
-  var ph = box.querySelector('.placeholder');
-  if (ph) ph.parentNode.removeChild(ph);
   var div = document.createElement('div');
   div.className = role === 'user' ? 'msg-user' : role === 'err' ? 'msg-err' : 'msg-ai';
   div.innerHTML = html;
@@ -2281,8 +2566,9 @@ function appendMsg(role, html, badgeText, badgeOk) {
 function clearChat() {
   chatHistory = [];
   var box = document.getElementById('chat-box');
-  box.innerHTML = '<div class="placeholder">💡 Try asking:<br>"When\'s the next shuttle to Conte Forum?"<br>"Newton express is 10 minutes late."</div>';
+  box.innerHTML = '';
   renderSuggestedQuestions();
+  renderProactiveAlert();
 }
 
 function clearSchedule() {
@@ -2456,16 +2742,31 @@ function onStopChange(name, options) {
   renderStopCard();
   updateStopContextBar();
   renderSuggestedQuestions();
+  renderProactiveAlert();
   if (options.recenter !== false) {
     leafletMap.flyTo(stopCoords(name), 15, {duration: 0.7, easeLinearity: 0.4});
   }
 }
 
+function onDestinationChange(name) {
+  if (!name) return;
+  destinationStop = name;
+  document.getElementById('dest-sel').value = name;
+  renderSuggestedQuestions();
+  renderProactiveAlert();
+  showToast('Destination set to ' + name, 'success');
+}
+
 function buildContext() {
   var time = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
+    return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
+  });
   var lines = [
-    'The user is currently viewing stop: ' + selectedStop + '.',
-    'When giving directions or arrival info, assume they are physically at or heading to ' + selectedStop + ' unless they say otherwise.',
+    'The user is currently at or starting from stop: ' + selectedStop + '.',
+    'The user selected destination stop: ' + destinationStop + '.',
+    'Routes serving both selected stops: ' + (sharedRoutes.length ? sharedRoutes.join(', ') : 'none found in current route data') + '.',
+    'When giving directions or arrival info, plan from ' + selectedStop + ' to ' + destinationStop + ' unless they say otherwise.',
     'Current time: ' + time, '', '=== LIVE SHUTTLE STATUS ==='];
   (shuttles||[]).forEach(function(s) {
     var d  = s.delay_minutes||0;
@@ -2479,7 +2780,7 @@ function buildContext() {
   Object.entries(mapPayload.routes).forEach(function(e){
     lines.push('- '+e[0]+': '+e[1].service_days+', '+e[1].service_window+', '+e[1].headway);
   });
-  lines.push('','=== UPCOMING ARRIVALS at '+selectedStop+' ===');
+  lines.push('','=== UPCOMING ARRIVALS at origin '+selectedStop+' ===');
   var arr = arrivalsForStop(selectedStop);
   if (arr.length) {
     arr.slice(0,4).forEach(function(a){
@@ -2623,28 +2924,40 @@ async function sendMessage(prefilledMessage) {
     var resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey},
-      body: JSON.stringify({model:'gpt-4o-mini', messages:msgs, temperature:0.3, max_tokens:600})
+      body: JSON.stringify({model:'gpt-4o-mini', messages:msgs, temperature:0.3, max_tokens:800, response_format:{type:'json_object'}})
     });
     var data = await resp.json();
     if (data.error) throw new Error(data.error.message);
 
     var raw = data.choices[0].message.content;
-    var parsed = parseDelay(raw);
-    var clean = parsed.clean || raw;
-    chatHistory.push({role:'assistant', content:clean});
+    var structured = null;
+    var clean = raw;
+    try {
+      structured = parseStructuredReply(raw);
+      clean = renderStructuredReply(structured) || escapeHtml(raw).replace(/\n/g,'<br>');
+    } catch(parseErr) {
+      var parsedFallback = parseDelay(raw);
+      clean = escapeHtml(parsedFallback.clean || raw).replace(/\n/g,'<br>');
+      structured = {delay_update: parsedFallback.shuttleId ? {shuttle_id: parsedFallback.shuttleId, delay_minutes: parsedFallback.mins} : null};
+    }
+    var assistantMemory = structured ? JSON.stringify(structured) : (raw || '');
+    chatHistory.push({role:'assistant', content:assistantMemory, display:clean});
 
     if (thinkEl.parentNode) thinkEl.parentNode.removeChild(thinkEl);
 
     var badgeText = null, badgeOk = false;
-    if (parsed.shuttleId) {
+    var delayData = structured && structured.delay_update && structured.delay_update.shuttle_id ? structured.delay_update : null;
+    if (delayData) {
+      var delayMins = parseInt(delayData.delay_minutes || 0, 10);
       (shuttles||[]).forEach(function(s){
-        if (s.id === parsed.shuttleId) { s.delay_minutes = parsed.mins; s.on_time = parsed.mins === 0; }
+        if (s.id === delayData.shuttle_id) { s.delay_minutes = delayMins; s.on_time = delayMins === 0; }
       });
-      badgeText = parsed.mins === 0 ? '✅ Delay cleared' : '⚠️ +'+ parsed.mins +' min delay applied';
-      badgeOk = parsed.mins === 0;
+      badgeText = delayMins === 0 ? '✅ Delay cleared' : '⚠️ +'+ delayMins +' min delay applied';
+      badgeOk = delayMins === 0;
     }
-    appendMsg('ai', escapeHtml(clean).replace(/\n/g,'<br>'), badgeText, badgeOk);
+    appendMsg('ai', clean, badgeText, badgeOk);
     renderSuggestedQuestions();
+    renderProactiveAlert();
   } catch(err) {
     if (thinkEl.parentNode) thinkEl.parentNode.removeChild(thinkEl);
     chatHistory.pop();
@@ -2664,7 +2977,11 @@ async function sendMessage(prefilledMessage) {
   chatHistory.forEach(function(m){
     var div = document.createElement('div');
     div.className = m.role==='user' ? 'msg-user' : 'msg-ai';
-    div.innerHTML = m.content.replace(/\n/g,'<br>').replace(/</g,'&lt;').replace(/&lt;br>/g,'<br>');
+    if (m.display) {
+      div.innerHTML = m.display;
+    } else {
+      div.innerHTML = escapeHtml(m.content || '').replace(/\n/g,'<br>');
+    }
     box.appendChild(div);
   });
   box.scrollTop = box.scrollHeight;
@@ -2856,6 +3173,8 @@ function onLocationSuccess(pos) {
   }
   updateLocationBanner(lat, lon);
   updateLocationRec();
+  renderSuggestedQuestions();
+  renderProactiveAlert();
   var nearest = nearestStopToUser(lat, lon);
   if (
     nearest &&
@@ -3110,6 +3429,7 @@ highlightRelevantShuttles(selectedStop);
 applyRouteFilter();
 renderStopCard();
 updateStopContextBar();
+renderProactiveAlert();
 renderRouteCards();
 applyHeight();
 setTimeout(applyHeight, 200);
@@ -3121,6 +3441,7 @@ requestAnimationFrame(animate);
 
     # Inject stop options into the template (heights are set by JS at runtime)
     html = html_template.replace("STOP_OPTIONS_PLACEHOLDER", stop_options)
+    html = html.replace("DESTINATION_OPTIONS_PLACEHOLDER", destination_options)
     # Combine data script + template
     full_html = data_script + html
     # Use a large iframe height so the JS window.innerHeight is close to real viewport.
@@ -3131,21 +3452,51 @@ requestAnimationFrame(animate);
 def display_main_app() -> None:
     _sync_selected_stop_from_query()
     update_shuttle_positions(advance=False)
+    apply_fullscreen_shell_styles()
 
     # Hide Streamlit chrome and pin the iframe to fill the full viewport
     st.markdown("""
     <style>
-    header[data-testid="stHeader"] { display:none !important; }
+    header, header[data-testid="stHeader"] { display:none !important; height:0 !important; }
+    #MainMenu, [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] {
+      display:none !important;
+      height:0 !important;
+    }
     [data-testid="stSidebar"]       { display:none !important; }
     [data-testid="collapsedControl"]{ display:none !important; }
     footer { display:none !important; }
-    html, body, .stApp { overflow:hidden !important; }
-    .stMainBlockContainer { padding:0 !important; max-width:100% !important; }
+    html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+      margin:0 !important;
+      padding:0 !important;
+      height:100dvh !important;
+      overflow:hidden !important;
+    }
+    .stMain,
+    .stMainBlockContainer,
+    .block-container,
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"],
+    [data-testid="block-container"] {
+      margin:0 !important;
+      padding:0 !important;
+      max-width:100% !important;
+    }
+    [data-testid="stVerticalBlock"],
+    [data-testid="stElementContainer"],
+    div:has(> iframe[title="st.components.v1.html"]) {
+      min-height:0 !important;
+    }
+    div:has(> iframe[title="st.components.v1.html"]) {
+      height:0 !important;
+      overflow:visible !important;
+    }
     /* Pin the iframe to the viewport so it always fills the screen */
+    iframe,
+    [data-testid="stIFrame"] iframe,
     iframe[title="st.components.v1.html"] {
       position:fixed !important;
       top:0 !important; left:0 !important;
-      width:100vw !important; height:100vh !important;
+      width:100vw !important; height:100dvh !important;
       border:none !important; z-index:999 !important;
     }
     </style>
