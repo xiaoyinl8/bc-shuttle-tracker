@@ -974,7 +974,7 @@ _AI_SYSTEM_PROMPT = (
     "boarding a shuttle for a trip. Ask the rider to choose a different destination first. "
     "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
     "Decide the response format yourself. Use plain text only when the user asks a follow-up explanation, "
-    "asks about confidence or uncertainty, asks how you reasoned, asks a general custom question, "
+    "asks about prediction confidence or how certain you are, asks how you reasoned, asks a general custom question, "
     "or does not need an actionable shuttle card. Use structured JSON only when the answer should create "
     "a rider action card, such as a next-arrival check, route recommendation, comparison, schedule or "
     "capacity decision, what-if trip plan, or explicit delay update. If you use plain text, do not include "
@@ -983,17 +983,29 @@ _AI_SYSTEM_PROMPT = (
     "{"
     "\"summary\":\"2 short sentences\","
     "\"recommended_option\":{\"action\":\"short recommendation\",\"route\":\"route or null\",\"bus\":\"bus label or null\",\"eta_minutes\":0,\"reasoning\":[\"reason\"]},"
-    "\"confidence\":{\"score\":0,\"label\":\"high|medium|low\",\"explanation\":\"plain-language uncertainty explanation\"},"
+    "\"confidence\":{\"score\":0,\"label\":\"high|medium|low\",\"explanation\":\"plain-language explanation of how certain this prediction is\"},"
     "\"alternatives\":[{\"action\":\"backup option\",\"tradeoff\":\"brief tradeoff\"}],"
     "\"what_if_options\":[{\"scenario\":\"what if case\",\"outcome\":\"expected outcome\"}],"
     "\"proactive_alert\":\"short heads-up or null\","
     "\"follow_up_question\":\"optional next question or null\","
-    "\"delay_update\":{\"shuttle_id\":\"comm-1\",\"delay_minutes\":0}"
+    "\"delay_update\":{\"shuttle_id\":\"comm-1\",\"delay_minutes\":0},"
+    "\"capacity_update\":{\"shuttle_id\":\"comm-1\",\"capacity_pct\":50}"
     "}. "
     "For confidence.score, use a real 0-100 confidence score. Do not use 0 as a placeholder "
     "when label is high, medium, or low. "
-    "Use JSON null for proactive_alert or follow_up_question when there is nothing useful to say; never write phrases like 'none at this time'. "
+    "Use JSON null for proactive_alert, follow_up_question, delay_update, and capacity_update when not applicable; never write phrases like 'none at this time'. "
     "Only set delay_update when the user explicitly reports or clears a delay; otherwise set it to null. "
+    "Only set capacity_update when the user explicitly reports a capacity or crowding level for a shuttle; otherwise set it to null. "
+    "Always return the full JSON schema — never return a bare partial object like {shuttle_id, delay_minutes} on its own. Always include at least a summary field. "
+    "When the user reports a delay or early arrival for the next shuttle, set delay_update with the shuttle_id of that shuttle — this automatically updates ETAs for all stops on that route. "
+    "The confidence score means how certain the prediction is — higher is more reliable, 90% means 90% certain. "
+    "Labels: High >=80%, Medium >=60%, Low <60%. "
+    "Factors that affect it: on-time status (base 88% on time, 68% if delayed), recent rider feedback, "
+    "how far away the shuttle is (farther = less certain), size of reported delay, and whether it is an express route. "
+    "Capacity labels: Crowded >=85% full, Moderate >=60% full, Light <60% full. "
+    "Explain these when the user asks how confidence or capacity is calculated. "
+    "For capacity questions, use plain text only — answer with the shuttle label, current capacity percentage, and crowding label (Light/Moderate/Very crowded). Do not use a structured JSON card for capacity-only questions. "
+    "Always use the human-readable shuttle label (e.g. 'Comm Ave 1') in the 'bus' field — never use the internal shuttle ID (e.g. 'comm-1'). "
     "Be friendly, concise, explain the why, and include confidence for structured recommendations."
 )
 
@@ -1728,6 +1740,10 @@ function stopDwell(name) {
   return 18;
 }
 function projectedCapacityAtStop(shuttle, stopName) {
+  // If a rider reported the capacity for this specific stop, use that directly
+  if (shuttle._reported_cap_at && shuttle._reported_cap_at[stopName] !== undefined) {
+    return shuttle._reported_cap_at[stopName];
+  }
   var route = mapPayload.routes[shuttle.route];
   var targetProg = route.stop_progress[stopName];
   if (targetProg === undefined) return shuttle.capacity_pct;
@@ -2485,8 +2501,8 @@ function buildSuggestedQuestions() {
       suggestions.push(intro + "what is the latest shuttle I can take from " + selectedStop + " to " + destinationStop + " without cutting it too close?");
       suggestions.push("Can you help me leave as late as possible but still make it on time?");
     } else {
-      suggestions.push("When is the next shuttle from " + selectedStop + " to " + destinationStop + "?");
-      suggestions.push("Which shuttle should I take from " + selectedStop + " to " + destinationStop + " if I want the lowest-risk option?");
+      suggestions.push("The next shuttle is running late");
+      suggestions.push("What's the capacity of the next shuttle?");
     }
 
     if (userProfile.crowd_style === 'avoid_crowds') {
@@ -2513,6 +2529,16 @@ function buildSuggestedQuestions() {
       suggestions.push("What if I leave 5 minutes later?");
     }
   } else {
+    var lastUserMsg = '';
+    for (var i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i].role === 'user') { lastUserMsg = chatHistory[i].content || ''; break; }
+    }
+    if (lastUserMsg.toLowerCase().indexOf('running late') !== -1) {
+      suggestions.push("The shuttle is running 5 mins late");
+      suggestions.push("The shuttle is running 10 mins late");
+      return suggestions.slice(0, 4);
+    }
+
     if (nextClass && !userSchedule) {
       suggestions.push("Can you remind me when I should leave for my " + nextClassTime + " " + nextClassDay + " class?");
     }
@@ -2545,7 +2571,16 @@ function buildSuggestedQuestions() {
         suggestions.push("Which shuttle should I take for my next class?");
       }
     } else {
-      suggestions.push("Would your recommendation change if I started from " + selectedStop + " and wanted to go to " + destinationStop + "?");
+      var liveArrivalsPost = arrivalsForStop(selectedStop);
+      var nextBusPost = liveArrivalsPost.length ? liveArrivalsPost[0] : null;
+      var nextDelayPost = nextBusPost ? (nextBusPost.shuttle.delay_minutes || 0) : 0;
+      if (nextDelayPost >= 3) {
+        suggestions.push("⚠\uFE0F The next shuttle is " + nextDelayPost + " min late — update ETA for all affected stops");
+      } else if (nextDelayPost <= -3) {
+        suggestions.push("🟢 The next shuttle is " + Math.abs(nextDelayPost) + " min early — update ETA for all affected stops");
+      } else {
+        suggestions.push("🟢 The next shuttle is on time — is it the best option for my trip?");
+      }
     }
   }
   return suggestions.filter(function(item, index, arr) {
@@ -2693,12 +2728,13 @@ function renderStructuredReply(payload) {
     html += '<div class="ai-section"><div class="ai-section-main">' + escapeHtml(summaryText) + '</div></div>';
   }
 
+  var shuttleIdToLabel = {'comm-1':'Comm Ave 1','comm-2':'Comm Ave 2','newton-1':'Newton Express 1','newton-2':'Newton Express 2'};
   var rec = payload.recommended_option || {};
   if (rec.action || rec.route || rec.bus || rec.eta_minutes) {
     html += '<div class="ai-section"><div class="ai-section-title">Recommendation</div>';
     html += '<div class="ai-section-main">' + escapeHtml(String(rec.action || 'Check the live arrivals before leaving.')) + '</div>';
     var pills = [];
-    if (rec.bus) pills.push(rec.bus);
+    if (rec.bus) pills.push(shuttleIdToLabel[rec.bus] || rec.bus);
     if (rec.route) pills.push(rec.route);
     if (Number(rec.eta_minutes) > 0) pills.push('~' + rec.eta_minutes + ' min');
     if (pills.length) {
@@ -2715,10 +2751,10 @@ function renderStructuredReply(payload) {
 
   var conf = payload.confidence || {};
   if (conf.score !== undefined || conf.explanation) {
-    var label = conf.label ? String(conf.label).replace(/^\w/, function(c){ return c.toUpperCase(); }) : 'Confidence';
+    var label = conf.label ? String(conf.label).replace(/^\w/, function(c){ return c.toUpperCase(); }) + ' confidence' : 'Confidence';
     var confidenceScore = normalizedConfidenceScore(conf.score, conf.label);
-    if (confidenceScore !== null) label += ' (' + confidenceScore + '%)';
-    html += '<div class="ai-section"><div class="ai-section-title">Uncertainty</div><div class="ai-section-main">' + escapeHtml(label) + '</div>';
+    if (confidenceScore !== null) label += ' \u2014 ' + confidenceScore + '% certain';
+    html += '<div class="ai-section"><div class="ai-section-title">Prediction Confidence</div><div class="ai-section-main">' + escapeHtml(label) + '</div>';
     if (conf.explanation) html += '<div class="ai-section-detail">' + escapeHtml(String(conf.explanation)) + '</div>';
     html += '</div>';
   }
@@ -2803,7 +2839,8 @@ function salvageStructuredReply(raw) {
     what_if_options: [],
     proactive_alert: null,
     follow_up_question: extractJsonStringValue(text, 'follow_up_question'),
-    delay_update: null
+    delay_update: null,
+    capacity_update: null
   };
   var reason = extractJsonStringValue(text, 'reasoning');
   if (reason) payload.recommended_option.reasoning.push(reason);
@@ -2819,13 +2856,22 @@ function tryParseStructuredReply(raw) {
       parsed = parseStructuredReply(parsed);
     }
     if (!parsed || typeof parsed !== 'object') return null;
+    // Normalize bare {shuttle_id, delay_minutes} into proper delay_update wrapper
+    if (parsed.shuttle_id && parsed.delay_minutes !== undefined && !parsed.delay_update) {
+      return { delay_update: { shuttle_id: parsed.shuttle_id, delay_minutes: parsed.delay_minutes } };
+    }
+    // Normalize bare {shuttle_id, capacity_pct} into proper capacity_update wrapper
+    if (parsed.shuttle_id && parsed.capacity_pct !== undefined && !parsed.capacity_update) {
+      return { capacity_update: { shuttle_id: parsed.shuttle_id, capacity_pct: parsed.capacity_pct } };
+    }
     var structuredKeys = [
       'recommended_option',
       'confidence',
       'alternatives',
       'what_if_options',
       'proactive_alert',
-      'delay_update'
+      'delay_update',
+      'capacity_update'
     ];
     return structuredKeys.some(function(key) { return Object.prototype.hasOwnProperty.call(parsed, key); })
       ? parsed
@@ -3256,6 +3302,19 @@ function buildContext() {
   return lines.join('\n');
 }
 
+function parseCapacityFromUserMsg(text) {
+  var lower = text.toLowerCase();
+  var hasCapacityKeyword = lower.indexOf('capacity') !== -1 || lower.indexOf('full') !== -1
+    || lower.indexOf('crowd') !== -1 || lower.indexOf('empty') !== -1 || lower.indexOf('seat') !== -1;
+  if (!hasCapacityKeyword) return null;
+  // Match "55%", "55 percent", "about 55%", "55 per cent"
+  var m = lower.match(/\b(\d{1,3})\s*(%|percent)/);
+  if (!m) return null;
+  var pct = parseInt(m[1], 10);
+  if (pct < 0 || pct > 100) return null;
+  return pct;
+}
+
 function parseDelay(text) {
   // pattern: DELAY_UPDATE:{shuttle_id:X,delay_minutes:N}
   var m = text.match(/DELAY_UPDATE:\{shuttle_id:([^,]+),delay_minutes:(-?\d+)\}/);
@@ -3341,6 +3400,26 @@ async function sendMessage(prefilledMessage) {
   sendBtn.disabled = true;
   chatHistory.push({role: 'user', content: userMsg});
   appendMsg('user', escapeHtml(userMsg).replace(/\n/g,'<br>'));
+
+  // Apply capacity update immediately from user message
+  var reportedCap = parseCapacityFromUserMsg(userMsg);
+  if (reportedCap !== null) {
+    var liveNow = arrivalsForStop(selectedStop);
+    var targetShuttle = liveNow.length ? liveNow[0].shuttle : null;
+    if (targetShuttle) {
+      (shuttles||[]).forEach(function(s) {
+        if (s.id === targetShuttle.id) {
+          s.capacity_pct = reportedCap;
+          s.capacity = reportedCap >= 85 ? 'Full' : reportedCap >= 60 ? 'Medium' : 'Empty';
+          if (!s._reported_cap_at) s._reported_cap_at = {};
+          s._reported_cap_at[selectedStop] = reportedCap;
+        }
+      });
+      updateStopContextBar();
+      renderStopCard();
+    }
+  }
+
   renderSuggestedQuestions();
 
   var box = document.getElementById('chat-box');
@@ -3389,6 +3468,23 @@ async function sendMessage(prefilledMessage) {
       });
       badgeText = delayMins === 0 ? '✅ Delay cleared' : '⚠️ +'+ delayMins +' min delay applied';
       badgeOk = delayMins === 0;
+    }
+    // Only apply capacity_update if the user actually reported a value (not just asked about it)
+    var userReportedCapacity = parseCapacityFromUserMsg(userMsg) !== null;
+    var capData = userReportedCapacity && structured && structured.capacity_update && structured.capacity_update.shuttle_id ? structured.capacity_update : null;
+    if (capData) {
+      var newCap = Math.max(0, Math.min(100, parseInt(capData.capacity_pct || 0, 10)));
+      (shuttles||[]).forEach(function(s){
+        if (s.id === capData.shuttle_id) {
+          s.capacity_pct = newCap;
+          s.capacity = newCap >= 85 ? 'Full' : newCap >= 60 ? 'Medium' : 'Empty';
+        }
+      });
+      updateStopContextBar();
+      renderStopCard();
+      var capLabel = newCap >= 85 ? 'Very crowded' : newCap >= 60 ? 'Moderate' : 'Light';
+      badgeText = (badgeText ? badgeText + ' · ' : '') + '🚌 Capacity updated: ' + newCap + '% (' + capLabel + ')';
+      badgeOk = true;
     }
     appendMsg('ai', clean, badgeText, badgeOk);
     renderSuggestedQuestions();

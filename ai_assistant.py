@@ -450,7 +450,9 @@ Rules:
 - Explain why using ETA, delay, crowding, route type, and confidence.
 - Use trip.origin_stop and trip.destination_stop when giving route-choice or boarding advice.
 - Use the service_schedule_reference data when reasoning about time-of-day frequency, likely service pattern, and whether Comm. Ave. Direct or Comm. Ave. All Stops is expected to be running.
-- Be transparent about uncertainty. Never present weak predictions as certain.
+- Be transparent about prediction certainty. Never present weak predictions as certain.
+- The confidence score means "how certain this prediction is" — higher is more reliable. 80% means 80% certain. When the user asks how confidence is calculated, explain: it starts at 88% if the shuttle is on time (68% if delayed), then adjusts for recent rider feedback, how far away the shuttle is (farther = less certain), the size of any reported delay, and whether the route is express (express routes are more predictable). Labels: High ≥80%, Medium ≥60%, Low <60%.
+- Capacity labels: Crowded ≥85% full, Moderate ≥60% full, Light <60% full. Explain these when asked.
 - Personalize recommendations when user preferences are available.
 - Offer at least one alternative when there is a meaningful tradeoff.
 - Support what-if reasoning when relevant.
@@ -647,11 +649,11 @@ def _render_structured_reply(payload: dict[str, Any]) -> str:
     if confidence_score is not None or confidence_explanation:
         label_text = f"{confidence_label.title()} confidence" if isinstance(confidence_label, str) else "Confidence"
         if isinstance(confidence_score, int):
-            label_text += f" ({confidence_score}%)"
+            label_text += f" — {confidence_score}% certain"
         conf_text = label_text
         if confidence_explanation:
             conf_text += f"\n{confidence_explanation}"
-        sections.append(f"**Uncertainty**\n{conf_text}")
+        sections.append(f"**Prediction Confidence**\n{conf_text}")
 
     alternatives = payload.get("alternatives") or []
     alt_lines = []
