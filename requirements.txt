@@ -3,4 +3,3 @@ folium
 streamlit-folium
 streamlit-autorefresh
 openai
-supabase

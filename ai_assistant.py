@@ -2,7 +2,6 @@
 
 import json
 import logging
-import math
 import os
 import re
 from datetime import datetime
@@ -134,94 +133,6 @@ def _capacity_label(capacity_pct: int) -> str:
     if capacity_pct >= 60:
         return "moderate"
     return "light"
-
-
-def _distance_meters(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
-    radius_m = 6_371_000
-    lat1 = math.radians(a_lat)
-    lat2 = math.radians(b_lat)
-    d_lat = math.radians(b_lat - a_lat)
-    d_lon = math.radians(b_lon - a_lon)
-    h = (
-        math.sin(d_lat / 2) ** 2
-        + math.cos(lat1) * math.cos(lat2) * math.sin(d_lon / 2) ** 2
-    )
-    return radius_m * 2 * math.atan2(math.sqrt(h), math.sqrt(1 - h))
-
-
-def _walking_minutes_between_stops(origin: str, destination: str) -> int | None:
-    stops = st.session_state.get("stops", {})
-    if origin not in stops or destination not in stops:
-        return None
-    meters = _distance_meters(
-        stops[origin]["lat"],
-        stops[origin]["lon"],
-        stops[destination]["lat"],
-        stops[destination]["lon"],
-    )
-    return max(1, math.ceil(meters / 80))
-
-
-def _route_progress_delta(route_name: str, origin: str, destination: str) -> float | None:
-    route = st.session_state.route_definitions.get(route_name)
-    if not route:
-        return None
-    stop_progress = route["metrics"]["stop_progress"]
-    if origin not in stop_progress or destination not in stop_progress:
-        return None
-    return (stop_progress[destination] - stop_progress[origin] + 1) % 1
-
-
-def _build_walk_vs_bus_metrics(
-    origin: str,
-    destination: str,
-    arrivals: list[dict[str, Any]],
-) -> dict[str, Any]:
-    if origin == destination:
-        return {"needs_destination": True, "direct_walk_minutes": 0, "bus_options": []}
-
-    direct_walk_minutes = _walking_minutes_between_stops(origin, destination)
-    bus_options = []
-    for arrival in arrivals[:4]:
-        route_name = arrival["route"]
-        route = st.session_state.route_definitions.get(route_name)
-        delta = _route_progress_delta(route_name, origin, destination)
-        if not route or delta is None:
-            continue
-        speed_mph = max(arrival.get("speed_mph", 12), 1)
-        ride_minutes = max(1, round((delta * route["metrics"]["total_length"]) / speed_mph * 60))
-        bus_options.append(
-            {
-                "bus": arrival["label"],
-                "route": route_name,
-                "wait_minutes": arrival["eta_minutes"],
-                "ride_minutes": ride_minutes,
-                "total_minutes": arrival["eta_minutes"] + ride_minutes,
-                "route_fraction": round(delta, 3),
-                "long_way_around": delta > 0.5,
-                "capacity_pct": arrival["capacity_pct"],
-            }
-        )
-
-    bus_options.sort(key=lambda item: item["total_minutes"])
-    best_bus = bus_options[0] if bus_options else None
-    walk_usually_better = direct_walk_minutes is not None and (
-        best_bus is None
-        or direct_walk_minutes <= 8
-        or direct_walk_minutes + 5 <= best_bus["total_minutes"]
-        or (best_bus["long_way_around"] and direct_walk_minutes <= best_bus["total_minutes"])
-    )
-    return {
-        "needs_destination": False,
-        "direct_walk_minutes": direct_walk_minutes,
-        "best_bus_total_minutes": best_bus["total_minutes"] if best_bus else None,
-        "walk_usually_better": walk_usually_better,
-        "bus_options": bus_options,
-        "decision_rule": (
-            "Recommend walking when it is shorter, under 8 minutes, or close to a bus "
-            "that loops the long way around."
-        ),
-    }
 
 
 def _minutes_since_midnight(now: datetime) -> int:
@@ -400,7 +311,6 @@ def _build_context_payload() -> dict[str, Any]:
     now = datetime.now()
     eta = build_eta_prediction(selected)
     arrivals = get_stop_arrivals(selected)
-    walk_vs_bus = _build_walk_vs_bus_metrics(selected, destination, arrivals)
     recent_feedback = st.session_state.feedback_history[-5:]
     active_comm_ave_service = _find_active_comm_ave_service(now)
 
@@ -489,7 +399,6 @@ def _build_context_payload() -> dict[str, Any]:
                 set(st.session_state.stops[selected]["routes"])
                 & set(st.session_state.stops.get(destination, {}).get("routes", []))
             ),
-            "walk_vs_bus": walk_vs_bus,
         },
         "user_profile": st.session_state.ai_user_profile,
         "prediction": {
@@ -540,11 +449,6 @@ Rules:
 - Recommend a concrete action when the user seems to need a decision.
 - Explain why using ETA, delay, crowding, route type, and confidence.
 - Use trip.origin_stop and trip.destination_stop when giving route-choice or boarding advice.
-- Use trip.walk_vs_bus before recommending a bus. If walk_vs_bus.walk_usually_better is true,
-  recommend walking instead of boarding a shuttle. In structured replies, set route and bus to
-  null for a walk recommendation.
-- Do not recommend a shuttle that travels the long way around the one-way loop when walking is
-  faster or similarly fast.
 - Use the service_schedule_reference data when reasoning about time-of-day frequency, likely service pattern, and whether Comm. Ave. Direct or Comm. Ave. All Stops is expected to be running.
 - Be transparent about uncertainty. Never present weak predictions as certain.
 - Personalize recommendations when user preferences are available.
