@@ -1332,7 +1332,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #route-side::-webkit-scrollbar {width:4px;}
   #route-side::-webkit-scrollbar-thumb {background:#334155;border-radius:2px;}
   #route-side::-webkit-scrollbar-thumb:hover {background:#475569;}
-  #route-side h3 {font-size:14px;margin:8px 0 6px;color:#f1f5f9;font-weight:800;letter-spacing:-.01em;}
+  #route-side h3 {font-size:20px;margin:8px 0 6px;color:#f1f5f9;font-weight:800;letter-spacing:-.01em;}
   .card       {background:#0f172a;border-radius:14px;padding:14px 14px 13px;margin-bottom:10px;
     border-left:4px solid;border-image:linear-gradient(180deg,#3b82f6,#7c3aed) 1;}
   .card .title{font-weight:700;font-size:12px;color:#f1f5f9;}
@@ -1372,9 +1372,10 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .legend     {background:#fff;color:#111827;padding:7px 9px;border-radius:7px;
     box-shadow:0 3px 10px rgba(0,0,0,.15);font-size:11px;line-height:1.5;}
   .legend-dot {display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+  .bus-hit {width:52px;height:52px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .bus-marker {width:32px;height:32px;border-radius:50%;border:3px solid #fff;
     box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;
-    justify-content:center;font-size:16px;}
+    justify-content:center;font-size:16px;cursor:pointer;}
   .bus-marker.boarding {box-shadow:0 0 0 5px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.3);animation:none;}
   /* Per-route icon colors + pulse animations */
   @keyframes bus-pulse-comm {
@@ -1391,20 +1392,37 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   .bus-color-newton { background-color: #8b0000 !important; animation: bus-pulse-newton 1.8s infinite; }
   .boarding-pill {background:rgba(17,24,39,.9);color:#fff;border-radius:999px;
     padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;}
-  /* Stop-click hint strip */
-  #stop-click-hint {padding:10px 12px;font-size:11px;color:#94a3b8;line-height:1.5;
-    border-radius:10px;background:rgba(15,23,42,.7);border:1px solid #1e3a5f;
-    box-shadow:0 0 0 1px rgba(59,130,246,.12);margin-bottom:8px;}
-  #stop-click-hint b {color:#93c5fd;}
-  body.light-mode #stop-click-hint {background:#f8fafc;border-color:#bfdbfe;box-shadow:0 0 0 1px rgba(37,99,235,.08);color:#475569;}
-  body.light-mode #stop-click-hint b {color:#1d4ed8;}
-  /* Selected-stop card header row with close button */
-  .stop-card-head {display:flex;align-items:flex-start;justify-content:space-between;gap:6px;}
-  #stop-close-btn {background:none;border:none;cursor:pointer;color:#64748b;font-size:15px;
-    line-height:1;padding:0;flex-shrink:0;margin-top:-1px;}
-  #stop-close-btn:hover {color:#f87171;}
-  body.light-mode #stop-close-btn {color:#94a3b8;}
-  body.light-mode #stop-close-btn:hover {color:#dc2626;}
+  /* Floating map windows (stop info + shuttle info) */
+  #stop-float, #shuttle-float {
+    position:absolute;z-index:1000;
+    background:rgba(15,23,42,0.93);border:1px solid #1e3a5f;
+    border-radius:16px;padding:14px 15px 13px;
+    box-shadow:0 8px 32px rgba(0,0,0,.45),0 0 0 1px rgba(59,130,246,.12);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    font-family:sans-serif;font-size:12px;color:#f1f5f9;
+    min-width:220px;max-width:280px;pointer-events:auto;}
+  #stop-float  {bottom:20px;left:16px;}
+  #shuttle-float {top:16px;right:16px;}
+  .float-head {display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;}
+  .float-title {font-size:13px;font-weight:900;color:#f1f5f9;letter-spacing:-.01em;line-height:1.2;word-break:break-word;}
+  .float-close {background:none;border:none;cursor:pointer;color:#64748b;font-size:15px;
+    line-height:1;padding:0;flex-shrink:0;margin-top:1px;}
+  .float-close:hover {color:#f87171;}
+  body.light-mode #stop-float, body.light-mode #shuttle-float {
+    background:rgba(255,255,255,0.95);border-color:#bfdbfe;
+    box-shadow:0 8px 32px rgba(15,23,42,.15),0 0 0 1px rgba(37,99,235,.1);color:#0f172a;}
+  body.light-mode .float-title {color:#0f172a;}
+  body.light-mode .float-close {color:#94a3b8;}
+  body.light-mode .float-close:hover {color:#dc2626;}
+  /* Override dark-mode inline colors for muted/primary text inside floats */
+  body.light-mode #stop-float [style*="color:#94a3b8"],
+  body.light-mode #shuttle-float [style*="color:#94a3b8"] {color:#374151 !important;}
+  body.light-mode #stop-float [style*="color:#64748b"],
+  body.light-mode #shuttle-float [style*="color:#64748b"] {color:#374151 !important;}
+  body.light-mode #stop-float [style*="color:#f1f5f9"],
+  body.light-mode #shuttle-float [style*="color:#f1f5f9"] {color:#0f172a !important;}
+  body.light-mode #stop-float b[style*="color:#f1f5f9"],
+  body.light-mode #shuttle-float b[style*="color:#f1f5f9"] {color:#0f172a !important;}
 
   /* Shuttle relevance highlighting when a stop is selected */
   .bus-marker.relevant {box-shadow:0 0 0 5px rgba(250,204,21,.75),0 2px 8px rgba(0,0,0,.4);
@@ -1462,7 +1480,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     #loc-banner {padding:6px 12px;font-size:11px;}
     #map-body {grid-template-columns:minmax(0,1fr) 285px;}
     #route-side {padding:10px;font-size:11px;}
-    #route-side h3 {font-size:13px;margin:6px 0 5px;}
+    #route-side h3 {font-size:18px;margin:6px 0 5px;}
     .card {padding:12px 12px 11px;margin-bottom:8px;border-radius:12px;}
     .card .title {font-size:11px;}
     .card .body {font-size:10px;}
@@ -1544,24 +1562,25 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       <div id="map-wrap">
         <div id="map-alert"></div>
         <div id="map" style="width:100%;"></div>
+        <div id="stop-float" style="display:none;">
+          <div class="float-head">
+            <div id="stop-float-title" class="float-title"></div>
+            <button class="float-close" onclick="closeStopSection()" title="Close">✕</button>
+          </div>
+          <div id="stop-float-routes"></div>
+          <div id="stop-float-arrivals"></div>
+        </div>
+        <div id="shuttle-float" style="display:none;">
+          <div class="float-head">
+            <div id="shuttle-float-title" class="float-title"></div>
+            <button class="float-close" onclick="closeShuttleFloat()" title="Close">✕</button>
+          </div>
+          <div id="shuttle-float-body"></div>
+        </div>
       </div>
       <div id="route-side">
-        <h3 id="loc-rec-title" style="display:none;">Near You</h3>
+        <h3 id="loc-rec-title" style="display:none;">Stops Near You</h3>
         <div id="loc-rec" style="display:none;"></div>
-        <div id="stop-click-hint">
-          <b>Click any stop</b> on the map to see live arrivals &amp; capacity.<br>
-          Click the same stop again — or press <b>✕</b> — to close.
-        </div>
-        <div id="stop-section" style="display:none;">
-          <h3>Selected Stop</h3>
-          <div class="card stop-card">
-            <div class="stop-card-head">
-              <div class="title" id="stop-title"></div>
-              <button id="stop-close-btn" onclick="closeStopSection()" title="Close stop info">✕</button>
-            </div>
-            <div class="body" id="service-meta"></div>
-          </div>
-        </div>
         <h3>Routes</h3>
         <div id="route-info"></div>
       </div>
@@ -1812,7 +1831,7 @@ document.addEventListener('mouseup', function(){ dragging=false; handle.classLis
 // ── chat ─────────────────────────────────────────────────────────────────────
 var selectedStop = mapPayload.selected_stop;
 var destinationStop = mapPayload.destination_stop || selectedStop;
-var dismissedMapAlertText = '';
+var dismissedAlertKey = '';
 var hasUserSelectedStopManually = false;
 var hasAutoSelectedNearestStop = false;
 var stopSectionVisible = false; // hidden until user actively selects a stop
@@ -2379,63 +2398,50 @@ function renderSuggestedQuestions() {
 }
 
 function buildProactiveAlert() {
-  var originArrivals = arrivalsForStop(selectedStop);
-  var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
-    return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
-  });
-  if (!sharedRoutes.length) {
-    return 'No direct route currently serves both ' + selectedStop + ' and ' + destinationStop + '. Ask AI for the lowest-risk transfer or walking plan.';
-  }
-  if (!originArrivals.length) {
-    return 'No live arrivals are visible for ' + selectedStop + ' right now. Ask AI for backup stops near you.';
-  }
+  // Only fire when the next shuttle to the selected stop is arriving within 3 minutes.
+  if (!selectedStop) return null;
+  var arrivals = arrivalsForStop(selectedStop);
+  if (!arrivals.length) return null;
+  var best = arrivals[0];
+  if (best.etaMinutes > 3) return null;
 
-  var best = originArrivals[0];
-  var backup = originArrivals[1];
-  if (best.shuttle.delay_minutes >= 5) {
-    return best.shuttle.label + ' is running about ' + best.shuttle.delay_minutes + ' minutes late. Check whether the next option is safer before leaving.';
-  }
-  if (best.shuttle.capacity_pct >= 85) {
-    if (backup && backup.shuttle.capacity_pct <= best.shuttle.capacity_pct - 20 && backup.etaMinutes - best.etaMinutes <= 8) {
-      return best.shuttle.label + ' arrives in ' + best.etaMinutes + ' min but is ' + best.shuttle.capacity_pct + '% full. Waiting ' + (backup.etaMinutes - best.etaMinutes) + ' more min may be more comfortable.';
-    }
-    return best.shuttle.label + ' is very crowded at ' + best.shuttle.capacity_pct + '%. Board promptly if timing matters, or ask AI for a less crowded option.';
-  }
-  if (backup && backup.etaMinutes - best.etaMinutes <= 4 && backup.shuttle.capacity_pct + 20 < best.shuttle.capacity_pct) {
-    return 'A less crowded backup is close: ' + backup.shuttle.label + ' is only ' + (backup.etaMinutes - best.etaMinutes) + ' min later and about ' + backup.shuttle.capacity_pct + '% full.';
-  }
-  if (userLatLng) {
-    var nearStops = nearestStopsToUser(userLatLng[0], userLatLng[1], 3);
-    var recommended = nearStops.find(function(candidate) {
-      return candidate.stop.name !== selectedStop && arrivalsForStop(candidate.stop.name).length;
-    });
-    if (recommended && recommended.dist < 220) {
-      return recommended.stop.name + ' is also nearby and has live service. Ask AI to compare it with ' + selectedStop + ' for this trip.';
+  var next = arrivals[1];
+  var msg;
+  if (best.etaMinutes <= 1) {
+    msg = best.shuttle.label + ' is arriving now at ' + escapeHtml(selectedStop) + '! Head over now if you want to catch it.';
+  } else {
+    msg = best.shuttle.label + ' arrives in ' + best.etaMinutes + ' min at ' + escapeHtml(selectedStop) + '. Rush over to catch it';
+    if (next) {
+      msg += ', or wait ' + next.etaMinutes + ' min for ' + next.shuttle.label + '.';
+    } else {
+      msg += '!';
     }
   }
-  return '';
+  return { key: selectedStop + '|' + best.shuttle.id, text: msg };
 }
 
 function renderProactiveAlert() {
   var alertEl = document.getElementById('map-alert');
-  var alert = buildProactiveAlert();
   if (!alertEl) return;
-  if (!alert || alert === dismissedMapAlertText) {
+  var alert = buildProactiveAlert();
+  if (!alert || alert.key === dismissedAlertKey) {
     alertEl.className = '';
     alertEl.innerHTML = '';
     return;
   }
+  if (alertEl.className === 'show') return; // already visible, don't re-render mid-countdown
   alertEl.className = 'show';
   alertEl.innerHTML =
     '<span class="alert-dot" aria-hidden="true"></span>' +
-    '<div class="alert-body"><div class="alert-title">AI Heads Up</div>' + escapeHtml(alert) + '</div>' +
-    '<button id="map-alert-close" type="button" title="Dismiss AI heads up" onclick="dismissMapAlert()">×</button>';
+    '<div class="alert-body"><div class="alert-title">Heads Up</div>' + alert.text + '</div>' +
+    '<button id="map-alert-close" type="button" title="Dismiss" onclick="dismissMapAlert()">×</button>';
 }
 
 function dismissMapAlert() {
   var alert = buildProactiveAlert();
-  dismissedMapAlertText = alert || '';
-  renderProactiveAlert();
+  dismissedAlertKey = alert ? alert.key : '';
+  var alertEl = document.getElementById('map-alert');
+  if (alertEl) { alertEl.className = ''; alertEl.innerHTML = ''; }
 }
 
 function safeArray(value) {
@@ -2715,6 +2721,53 @@ function highlightRelevantShuttles(stopName) {
 function closeStopSection() {
   stopSectionVisible = false;
   renderStopCard();
+  (shuttles || []).forEach(function(s) { s._relevantForStop = undefined; updateMarkerVisual(s); });
+}
+
+var selectedShuttleId = null;
+
+function closeShuttleFloat() {
+  selectedShuttleId = null;
+  var el = document.getElementById('shuttle-float');
+  if (el) el.style.display = 'none';
+}
+
+function renderShuttleFloat() {
+  var el = document.getElementById('shuttle-float');
+  if (!el) return;
+  if (!selectedShuttleId) { el.style.display = 'none'; return; }
+  var s = (shuttles || []).find(function(x) { return x.id === selectedShuttleId; });
+  if (!s) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  var route = mapPayload.routes[s.route];
+  var capPct = s.capacity_pct;
+  var capColor = capPct >= 85 ? '#ef4444' : capPct >= 60 ? '#f59e0b' : '#22c55e';
+  document.getElementById('shuttle-float-title').innerHTML =
+    escapeHtml(s.label) +
+    '<span class="stop-route-pill" style="background:'+route.color+';font-size:9px;margin-left:8px;vertical-align:middle;">'+escapeHtml(s.route)+'</span>';
+  var delayHtml = s.delay_minutes > 0
+    ? '<div style="color:#ef4444;font-size:11px;font-weight:800;margin-top:6px;">⚠️ +'+s.delay_minutes+' min late</div>'
+    : s.delay_minutes < 0
+      ? '<div style="color:#22c55e;font-size:11px;font-weight:800;margin-top:6px;">⏰ '+Math.abs(s.delay_minutes)+' min early</div>'
+      : '';
+  var expressHtml = s.is_express ? '<div style="color:#7c3aed;font-size:11px;font-weight:800;margin-top:4px;">🚀 Express</div>' : '';
+  var statusHtml = s.dwell_seconds_remaining > 0
+    ? '<div style="color:#94a3b8;font-size:11px;margin-top:6px;">Boarding at <b style="color:#f1f5f9;">'+escapeHtml(s.current_stop)+'</b></div>'
+    : '<div style="color:#94a3b8;font-size:11px;margin-top:6px;">Heading to <b style="color:#f1f5f9;">'+escapeHtml(s.next_stop)+'</b></div>';
+  var capBarWidth = Math.min(100, capPct);
+  var peopleHtml = capacityPeopleHtml(capPct).replace('color:#2563eb;', 'color:'+capColor+';');
+  var capHtml = '<div style="margin-top:10px;">'
+    + '<div style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin-bottom:2px;">Capacity</div>'
+    + peopleHtml.replace('margin-top:10px;', 'margin-top:4px;')
+    + '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;">'
+    + '<div style="flex:1;height:5px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden;">'
+    + '<div style="height:100%;width:'+capBarWidth+'%;background:'+capColor+';border-radius:999px;transition:width .4s ease;"></div>'
+    + '</div>'
+    + '<span style="font-size:12px;font-weight:900;color:'+capColor+';">'+capPct+'%</span>'
+    + '</div>'
+    + '<div style="color:#94a3b8;font-size:10px;margin-top:4px;">'+escapeHtml(s.capacity)+'</div>'
+    + '</div>';
+  document.getElementById('shuttle-float-body').innerHTML = statusHtml + delayHtml + expressHtml + capHtml;
 }
 
 function onStopChange(name, options) {
@@ -2732,6 +2785,7 @@ function onStopChange(name, options) {
 
   // New stop: always show the panel
   stopSectionVisible = true;
+  dismissedAlertKey = '';
   if (options.manual !== false) {
     hasUserSelectedStopManually = true;
   }
@@ -3204,13 +3258,18 @@ shuttles = mapPayload.shuttles.map(function(s) {
   var route = mapPayload.routes[s.route];
   var pos   = positionAtProgress(route, s.progress);
   var marker = L.marker(pos, {
-    icon: L.divIcon({className:'', html:'<div class="bus-marker '+busColorClass(s.route)+'">🚌</div>',
-      iconSize:[32,32], iconAnchor:[16,16]})
+    icon: L.divIcon({className:'bus-hit', html:'<div class="bus-marker '+busColorClass(s.route)+'">🚌</div>',
+      iconSize:[52,52], iconAnchor:[26,26]})
   }).addTo(leafletMap);
   var badge = L.marker(pos, {
     icon: L.divIcon({className:'', html:'', iconSize:[90,22], iconAnchor:[45,32]})
   }).addTo(leafletMap);
   marker.bindTooltip(s.label + ' · ' + s.route);
+  marker.on('click', function() {
+    var sid = s.id;
+    selectedShuttleId = (selectedShuttleId === sid) ? null : sid;
+    renderShuttleFloat();
+  });
   return Object.assign({}, s, {marker:marker, badge:badge, lastFrame:performance.now()});
 });
 
@@ -3259,28 +3318,41 @@ function toggleRouteFilter(routeName) {
 }
 
 function updateMarkerVisual(s) {
-  var route   = mapPayload.routes[s.route];
   var boarding = s.dwell_seconds_remaining > 0;
-  var relevanceCls = '';
-  if (s._relevantForStop !== undefined) {
-    relevanceCls = s._relevantForStop ? ' relevant' : ' dim';
+  var relevanceCls = s._relevantForStop === undefined ? '' : (s._relevantForStop ? ' relevant' : ' dim');
+  var newCls = 'bus-marker ' + busColorClass(s.route) + (boarding ? ' boarding' : '') + relevanceCls;
+
+  // Patch the existing DOM node's className instead of calling setIcon every frame.
+  // setIcon tears down and rebuilds the element, causing missed clicks during replacement.
+  var iconEl = s.marker.getElement();
+  if (iconEl) {
+    var busEl = iconEl.querySelector('.bus-marker');
+    if (busEl) {
+      if (busEl.className !== newCls) busEl.className = newCls;
+      var badgeEl = s.badge.getElement();
+      if (badgeEl) {
+        var pill = badgeEl.querySelector('.boarding-pill');
+        var wantPill = boarding;
+        if (wantPill && !pill) {
+          badgeEl.innerHTML = '<div class="boarding-pill">Boarding</div>';
+        } else if (!wantPill && pill) {
+          badgeEl.innerHTML = '';
+        }
+      }
+      return;
+    }
   }
-  s.marker.setIcon(L.divIcon({className:'',
-    html:'<div class="bus-marker '+busColorClass(s.route)+(boarding?' boarding':'')+relevanceCls+'">🚌</div>',
-    iconSize:[32,32], iconAnchor:[16,16]}));
+  // First frame: element not in DOM yet — create icon normally.
+  s.marker.setIcon(L.divIcon({className:'bus-hit',
+    html:'<div class="' + newCls + '">🚌</div>',
+    iconSize:[52,52], iconAnchor:[26,26]}));
   s.badge.setIcon(L.divIcon({className:'',
     html: boarding ? '<div class="boarding-pill">Boarding</div>' : '',
     iconSize:[90,22], iconAnchor:[45,32]}));
 }
 
 function refreshPopup(s) {
-  var delay = s.delay_minutes > 0
-    ? '<br><span style="color:#dc2626;font-weight:700;">⚠️ +'+s.delay_minutes+' min late</span>'
-    : s.delay_minutes < 0
-      ? '<br><span style="color:#16a34a;font-weight:700;">⏰ '+Math.abs(s.delay_minutes)+' min early</span>' : '';
-  var expr = s.is_express ? '<br><span style="color:#7c3aed;font-weight:700;">🚀 Express</span>' : '';
-  s.marker.bindPopup('<b>'+s.label+'</b><br>Route: '+s.route+'<br>Stop: '+s.current_stop+
-    '<br>Next: '+s.next_stop+'<br>Capacity: '+s.capacity+' ('+s.capacity_pct+'%)'+delay+expr);
+  // Shuttle details are shown in the custom floating window on click; no Leaflet popup needed.
 }
 
 function updateShuttleState(s, dt) {
@@ -3327,81 +3399,62 @@ function animate(now) {
     refreshPopup(s);
   });
   renderStopCard();
+  renderShuttleFloat();
   // Refresh stop context bar and location recs every ~3 s (≈180 frames at 60 fps)
   _locRecFrame++;
   if (_locRecFrame % 180 === 0) {
     updateStopContextBar();
     updateLocationRec();
+    renderProactiveAlert();
   }
   requestAnimationFrame(animate);
 }
 
 function renderStopCard() {
   var show = stopSectionVisible && (hasUserSelectedStopManually || hasAutoSelectedNearestStop);
-  var sectionEl = document.getElementById('stop-section');
-  var hintEl    = document.getElementById('stop-click-hint');
-  if (sectionEl) sectionEl.style.display = show ? 'block' : 'none';
-  if (hintEl)    hintEl.style.display    = show ? 'none'  : 'block';
+  var floatEl = document.getElementById('stop-float');
+  if (!floatEl) return;
+  floatEl.style.display = show ? 'block' : 'none';
   if (!show) return;
 
+  document.getElementById('stop-float-title').textContent = selectedStop;
+
   var stopRoutes = routeNamesForStop(selectedStop);
+  var routePills = stopRoutes.map(function(routeName) {
+    var route = mapPayload.routes[routeName];
+    return '<span class="stop-route-pill" style="background:'+route.color+';">'+routeName+'</span>';
+  }).join('');
+  document.getElementById('stop-float-routes').innerHTML =
+    '<div class="stop-routes" style="margin-top:0;margin-bottom:10px;">' + routePills + '</div>';
+
   var arrivals = arrivalsForStop(selectedStop);
-  document.getElementById('stop-title').textContent = selectedStop;
-
-  var routePills = '<div class="stop-routes">' +
-    stopRoutes.map(function(routeName) {
-      var route = mapPayload.routes[routeName];
-      return '<span class="stop-route-pill" style="background:'+route.color+';">'+routeName+'</span>';
-    }).join('') +
-    '</div>';
-
-  var arrivalsHtml = '';
+  var html = '';
   if (!arrivals.length) {
-    arrivalsHtml = '<div class="stop-metric">' +
-      '<div class="stop-metric-label">Upcoming Buses</div>' +
-      '<div class="stop-metric-value">No live bus</div>' +
-      '<div class="stop-metric-detail">No shuttle is currently approaching this stop.</div>' +
-      '</div>';
+    html = '<div style="color:#94a3b8;font-size:11px;">No shuttle approaching this stop.</div>';
   } else {
-    arrivalsHtml = '<div class="stop-metric"><div class="stop-metric-label">Upcoming Buses</div></div>';
-    arrivals.slice(0, 3).forEach(function(arrival, idx) {
+    arrivals.slice(0, 4).forEach(function(arrival, idx) {
       var s = arrival.shuttle;
       var route = mapPayload.routes[s.route];
-      var capPct = s.capacity_pct;
-      var capColor = capPct >= 85 ? '#ef4444' : capPct >= 60 ? '#f59e0b' : '#22c55e';
       var delayBadge = s.delay_minutes > 0
         ? '<span style="color:#ef4444;font-size:9px;font-weight:800;margin-left:4px;">+'+s.delay_minutes+'m late</span>'
         : s.delay_minutes < 0
           ? '<span style="color:#22c55e;font-size:9px;font-weight:800;margin-left:4px;">'+Math.abs(s.delay_minutes)+'m early</span>'
           : '';
       var expressBadge = s.is_express
-        ? '<span style="color:#7c3aed;font-size:9px;font-weight:800;margin-left:4px;">🚀 Express</span>'
-        : '';
-      arrivalsHtml += '<div style="margin-top:' + (idx === 0 ? '8' : '10') + 'px;padding-top:' + (idx === 0 ? '0' : '8') + 'px;'
-        + (idx > 0 ? 'border-top:1px solid rgba(148,163,184,.15);' : '') + '">';
-      // ETA + route chip
-      arrivalsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">';
-      arrivalsHtml += '<div>';
-      arrivalsHtml += '<span class="stop-metric-value" style="font-size:' + (idx === 0 ? '22' : '16') + 'px;">'
-        + arrival.etaMinutes + ' min</span>';
-      arrivalsHtml += delayBadge + expressBadge;
-      arrivalsHtml += '</div>';
-      arrivalsHtml += '<span class="stop-route-pill" style="background:'+route.color+';font-size:9px;">'+s.route+'</span>';
-      arrivalsHtml += '</div>';
-      // Bus label
-      arrivalsHtml += '<div class="stop-metric-detail" style="margin-top:3px;">' + escapeHtml(s.label) + '</div>';
-      // Capacity row
-      arrivalsHtml += '<div style="display:flex;align-items:center;gap:8px;margin-top:5px;">';
-      arrivalsHtml += capacityPeopleHtml(capPct);
-      arrivalsHtml += '<div class="stop-capacity-badge" style="border:1px solid rgba(148,163,184,.2);">'
-        + '<span style="color:'+capColor+';font-weight:900;">'+capPct+'%</span>'
-        + '&nbsp;·&nbsp;' + escapeHtml(s.capacity) + '</div>';
-      arrivalsHtml += '</div>';
-      arrivalsHtml += '</div>';
+        ? '<span style="color:#7c3aed;font-size:9px;font-weight:800;margin-left:4px;">🚀</span>' : '';
+      html += '<div style="'+(idx>0?'margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,.15);':'')+
+        'display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+      html += '<div>';
+      html += '<span style="font-size:'+(idx===0?'20':'15')+'px;font-weight:900;color:#f1f5f9;">'
+        +arrival.etaMinutes+' min</span>';
+      html += delayBadge + expressBadge;
+      html += '<div style="color:#94a3b8;font-size:10px;margin-top:2px;">'+escapeHtml(s.label)+'</div>';
+      html += '</div>';
+      html += '<span class="stop-route-pill" style="background:'+route.color+';font-size:9px;flex-shrink:0;">'+escapeHtml(s.route)+'</span>';
+      html += '</div>';
     });
   }
-
-  document.getElementById('service-meta').innerHTML = routePills + arrivalsHtml;
+  document.getElementById('stop-float-arrivals').innerHTML = html;
 }
 
 function renderRouteCards() {
@@ -3423,7 +3476,7 @@ function renderRouteCards() {
   }).join('');
 }
 
-shuttles.forEach(function(s){ updateMarkerVisual(s); refreshPopup(s); });
+shuttles.forEach(function(s){ updateMarkerVisual(s); });
 updateSelectedStopMarkers();
 highlightRelevantShuttles(selectedStop);
 applyRouteFilter();
