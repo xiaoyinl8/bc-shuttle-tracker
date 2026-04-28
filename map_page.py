@@ -972,6 +972,9 @@ _AI_SYSTEM_PROMPT = (
     "Use the provided current datetime in America/New_York for all schedule and 'today' reasoning. "
     "If the context says the destination is not set because it matches the origin, do not recommend "
     "boarding a shuttle for a trip. Ask the rider to choose a different destination first. "
+    "Compare walking against bus wait plus ride time. If the trip metrics say walking is usually better, "
+    "recommend walking instead of a shuttle, with route and bus set to null in structured replies. "
+    "Do not recommend a shuttle that must loop the long way around when walking is faster or similarly fast. "
     "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
     "Decide the response format yourself. Use plain text only when the user asks a follow-up explanation, "
     "asks about confidence or uncertainty, asks how you reasoned, asks a general custom question, "
@@ -1722,6 +1725,25 @@ function positionAtProgress(route, progress) {
   }
   return route.path[route.path.length-1];
 }
+
+function haversineMeters(a, b) {
+  if (!a || !b) return null;
+  var R = 6371000;
+  var lat1 = a[0] * Math.PI / 180;
+  var lat2 = b[0] * Math.PI / 180;
+  var dLat = (b[0] - a[0]) * Math.PI / 180;
+  var dLon = (b[1] - a[1]) * Math.PI / 180;
+  var sinLat = Math.sin(dLat / 2);
+  var sinLon = Math.sin(dLon / 2);
+  var h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function walkingMinutesBetweenCoords(a, b) {
+  var meters = haversineMeters(a, b);
+  if (meters === null) return null;
+  return Math.max(1, Math.ceil(meters / 80));
+}
 function stopDwell(name) {
   if (name.charAt(0)==='A'||name.charAt(0)==='G'||name.charAt(0)==='M') return 35;
   if (name.charAt(0)==='D'||name.charAt(0)==='J') return 25;
@@ -1770,6 +1792,65 @@ function routeProgressDelta(routeName, fromStopName, toStopName) {
   var route = mapPayload.routes[routeName];
   if (!route || route.stop_progress[fromStopName] === undefined || route.stop_progress[toStopName] === undefined) return null;
   return (route.stop_progress[toStopName] - route.stop_progress[fromStopName] + 1) % 1;
+}
+
+function routeRideMinutesBetweenStops(routeName, fromStopName, toStopName, speedMph) {
+  var route = mapPayload.routes[routeName];
+  var delta = routeProgressDelta(routeName, fromStopName, toStopName);
+  if (!route || delta === null) return null;
+  var mph = Math.max(speedMph || 12, 1);
+  return Math.max(1, Math.round((delta * route.total_length) / mph * 60));
+}
+
+function buildTripPlanningMetrics() {
+  if (selectedStop === destinationStop) {
+    return {needsDestination: true, directWalkMinutes: 0, busOptions: []};
+  }
+  var selectedCoords = stopCoords(selectedStop);
+  var destinationCoords = stopCoords(destinationStop);
+  var userWalkToDestination = userLatLng
+    ? walkingMinutesBetweenCoords(userLatLng, destinationCoords)
+    : null;
+  var directWalkMinutes = userWalkToDestination !== null
+    ? userWalkToDestination
+    : walkingMinutesBetweenCoords(selectedCoords, destinationCoords);
+  var originArrivals = arrivalsForStop(selectedStop);
+  var busOptions = originArrivals.slice(0, 4).map(function(arrival) {
+    var routeName = arrival.shuttle.route;
+    var rideMinutes = routeRideMinutesBetweenStops(
+      routeName,
+      selectedStop,
+      destinationStop,
+      arrival.shuttle.speed_mph
+    );
+    var routeDelta = routeProgressDelta(routeName, selectedStop, destinationStop);
+    if (rideMinutes === null || routeDelta === null) return null;
+    return {
+      bus: arrival.shuttle.label,
+      route: routeName,
+      wait_minutes: arrival.etaMinutes,
+      ride_minutes: rideMinutes,
+      total_minutes: arrival.etaMinutes + rideMinutes,
+      route_fraction: Number(routeDelta.toFixed(3)),
+      long_way_around: routeDelta > 0.5,
+      capacity_pct: arrival.shuttle.capacity_pct
+    };
+  }).filter(Boolean).sort(function(a, b) { return a.total_minutes - b.total_minutes; });
+  var bestBus = busOptions.length ? busOptions[0] : null;
+  var walkUsuallyBetter = directWalkMinutes !== null && (
+    !bestBus ||
+    directWalkMinutes <= 8 ||
+    directWalkMinutes + 5 <= bestBus.total_minutes ||
+    (bestBus.long_way_around && directWalkMinutes <= bestBus.total_minutes)
+  );
+  return {
+    needsDestination: false,
+    directWalkMinutes: directWalkMinutes,
+    directWalkSource: userLatLng ? 'current GPS location to destination stop' : 'selected origin stop to destination stop',
+    bestBusTotalMinutes: bestBus ? bestBus.total_minutes : null,
+    walkUsuallyBetter: walkUsuallyBetter,
+    busOptions: busOptions
+  };
 }
 
 function routeNamesForStop(stopName) {
@@ -2422,6 +2503,12 @@ function followUpSuggestionsFromLastResponse(nextClass, needsDestination) {
     suggestions.push("What if I want to arrive 10 minutes early?");
   }
 
+  if (text.indexOf('walk') !== -1 || text.indexOf('walking') !== -1) {
+    suggestions.push("Should I walk or take the shuttle for this trip?");
+    suggestions.push("What if I still prefer taking the shuttle?");
+    suggestions.push("How long would the bus take compared with walking?");
+  }
+
   return suggestions;
 }
 
@@ -2439,6 +2526,12 @@ function buildSuggestedQuestions() {
   followUpSuggestionsFromLastResponse(nextClass, needsDestination).forEach(function(question) {
     suggestions.push(question);
   });
+
+  if (!needsDestination) {
+    suggestions.push("How do I get from " + selectedStop + " to " + destinationStop + " right now?");
+    suggestions.push("Should I walk or take the shuttle from " + selectedStop + " to " + destinationStop + "?");
+    suggestions.push("When is the next shuttle from " + selectedStop + " to " + destinationStop + "?");
+  }
 
   if (userSchedule) {
     if (nextClass) {
@@ -3156,6 +3249,7 @@ function buildContext() {
   var time = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZone:'America/New_York',timeZoneName:'short'});
   var needsDestination = selectedStop === destinationStop;
   var nextClass = nextScheduledClass();
+  var tripMetrics = buildTripPlanningMetrics();
   var sharedRoutes = routeNamesForStop(selectedStop).filter(function(routeName) {
     return routeNamesForStop(destinationStop).indexOf(routeName) !== -1;
   });
@@ -3179,6 +3273,34 @@ function buildContext() {
       : 'traveling from '+s.current_stop+' toward '+s.next_stop;
     lines.push('- '+s.id+' ('+s.label+'), route: '+s.route+', status: '+st+', capacity: '+s.capacity_pct+'%'+ds);
   });
+  if (!needsDestination) {
+    lines.push('', '=== WALK VS BUS TRIP CHECK ===');
+    if (tripMetrics.directWalkMinutes !== null) {
+      lines.push(
+        'Direct walking estimate (' + tripMetrics.directWalkSource + '): about ' +
+        tripMetrics.directWalkMinutes + ' min.'
+      );
+    }
+    if (tripMetrics.busOptions.length) {
+      tripMetrics.busOptions.forEach(function(option) {
+        lines.push(
+          '- ' + option.bus + ' (' + option.route + '): wait ' + option.wait_minutes +
+          ' min + ride about ' + option.ride_minutes + ' min = about ' +
+          option.total_minutes + ' min total; route fraction ' + option.route_fraction +
+          (option.long_way_around ? ' [LONG WAY AROUND THE ONE-WAY LOOP]' : '') +
+          '; capacity ' + option.capacity_pct + '%.'
+        );
+      });
+    } else {
+      lines.push('No direct bus option from selected origin to destination in current route data.');
+    }
+    lines.push(
+      'Decision rule: if direct walking is shorter, under 8 minutes, or within about 5 minutes of a bus that loops the long way around, recommend walking instead of boarding a shuttle.'
+    );
+    if (tripMetrics.walkUsuallyBetter) {
+      lines.push('Recommended mode from trip metrics: WALK. Do not recommend boarding a shuttle unless the user explicitly prefers riding.');
+    }
+  }
   lines.push('','=== ROUTE SCHEDULES ===');
   Object.entries(mapPayload.routes).forEach(function(e){
     lines.push('- '+e[0]+': '+e[1].service_days+', '+e[1].service_window+', '+e[1].headway);
