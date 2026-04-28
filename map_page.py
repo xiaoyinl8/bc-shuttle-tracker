@@ -1,3 +1,4 @@
+import base64
 import json
 from urllib.parse import quote
 
@@ -13,6 +14,14 @@ from shuttle_simulation import (
     get_stop_arrivals,
     initialize_simulation_state,
     update_shuttle_positions,
+)
+from user_data_store import (
+    delete_user_data,
+    get_supabase,
+    load_profile,
+    load_schedule,
+    save_profile,
+    save_schedule,
 )
 
 
@@ -89,6 +98,70 @@ def _sync_selected_stop_from_query() -> None:
     selected_from_query = st.query_params.get("selected_stop")
     if selected_from_query and selected_from_query in st.session_state.stops:
         st.session_state.user_stop = selected_from_query
+
+
+def _decode_user_data_payload(value: str | None) -> dict:
+    if not value:
+        return {}
+    padding = "=" * (-len(value) % 4)
+    decoded = base64.urlsafe_b64decode((value + padding).encode("ascii"))
+    return json.loads(decoded.decode("utf-8"))
+
+
+def _clear_user_data_action_params() -> None:
+    for key in ["user_data_action", "payload"]:
+        try:
+            del st.query_params[key]
+        except KeyError:
+            pass
+
+
+def _handle_user_data_action() -> None:
+    action = st.query_params.get("user_data_action")
+    user_id = st.query_params.get("uid")
+    if not action or not user_id:
+        return
+
+    try:
+        payload = _decode_user_data_payload(st.query_params.get("payload"))
+        if action == "save_profile":
+            save_profile(user_id, payload.get("profile", {}))
+        elif action == "save_schedule":
+            save_schedule(
+                user_id,
+                str(payload.get("raw_text", "")),
+                payload.get("parsed_entries", []) if isinstance(payload.get("parsed_entries"), list) else [],
+            )
+        elif action == "delete_schedule":
+            from user_data_store import delete_schedule  # noqa: PLC0415
+
+            delete_schedule(user_id)
+        elif action == "delete_all":
+            delete_user_data(user_id)
+    except Exception as exc:  # keep UI usable even if remote persistence fails
+        st.session_state.user_data_error = str(exc)
+    finally:
+        _clear_user_data_action_params()
+        st.rerun()
+
+
+def _load_remote_user_data() -> dict:
+    user_id = st.query_params.get("uid")
+    data = {
+        "available": bool(get_supabase()),
+        "user_id": user_id or "",
+        "profile": None,
+        "schedule": None,
+        "error": st.session_state.pop("user_data_error", ""),
+    }
+    if not user_id or not data["available"]:
+        return data
+    try:
+        data["profile"] = load_profile(user_id)
+        data["schedule"] = load_schedule(user_id)
+    except Exception as exc:
+        data["error"] = str(exc)
+    return data
 
 
 
