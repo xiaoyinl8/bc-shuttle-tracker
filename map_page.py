@@ -1624,7 +1624,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         <span id="profile-name">Your profile</span>
       </button>
       <button id="guide-btn" onclick="startTour(true)" title="Replay guide">Guide</button>
-      <button id="locate-btn" onclick="centerOnUser()" title="Show my location">📍</button>
+      <button id="locate-btn" onclick="showMyLocation()" title="Show my location and set nearest stop">📍</button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
     </div>
     <div id="loc-banner"></div>
@@ -1945,8 +1945,14 @@ var tourSteps = [
   },
   {
     selector: '#map',
-    title: 'Use the map to pick another stop',
-    body: 'If you want a different stop, click that stop directly on the map. You can also use the route buttons at the bottom of the right panel to focus on one route, then click any stop along that line.',
+    title: 'Use the map to inspect stops and buses',
+    body: 'Click any stop on the map to select it and see upcoming buses for that stop. Click a moving bus marker to open its live details, including current capacity. You can also use the route buttons in the right panel to focus on one route, then click any stop along that line.',
+    placement: 'bottom'
+  },
+  {
+    selector: '#locate-btn',
+    title: 'Let the app find your nearest stop',
+    body: 'Click the location button to center the map on you and automatically set Your stop to the nearest shuttle stop based on your current GPS location.',
     placement: 'bottom'
   },
   {
@@ -1964,7 +1970,7 @@ var tourSteps = [
 ];
 
 function getTourStorageKey() {
-  return 'bc_shuttle_guided_tour_v1';
+  return 'bc_shuttle_guided_tour_v2';
 }
 
 function isTourActive() {
@@ -3496,21 +3502,10 @@ function buildContext() {
     lines.push('', '=== USER\'S CURRENT LOCATION ===');
     lines.push('User has shared their GPS location. Nearby stops and next arrivals:');
     var nearStops = nearestStopsToUser(userLatLng[0], userLatLng[1], 3);
-    // Identify which stop the Near You panel recommends (lowest walk + ETA total)
-    var recStopName = '';
-    var recMinTime = Infinity;
-    nearStops.forEach(function(c) {
-      var walkMins = Math.max(1, Math.ceil(c.dist / 80));
-      var arr = arrivalsForStop(c.stop.name);
-      if (arr.length) {
-        var total = walkMins + arr[0].etaMinutes;
-        if (total < recMinTime) { recMinTime = total; recStopName = c.stop.name; }
-      }
-    });
     nearStops.forEach(function(c) {
       var distStr = c.dist < 1000 ? Math.round(c.dist) + 'm' : (c.dist/1000).toFixed(1) + 'km';
       var walkMins = Math.max(1, Math.ceil(c.dist / 80));
-      var tag = c.stop.name === recStopName ? ' [RECOMMENDED — shown in Near You panel]' : '';
+      var tag = c.stop.name === nearStops[0].stop.name ? ' [NEAREST — shown first in Near You panel]' : '';
       var stopRole = c.stop.name === selectedStop ? 'selected origin' : 'alternate boarding stop';
       lines.push('Stop: ' + c.stop.name + tag + ' [' + stopRole + '] (' + distStr + ' away, ~' + walkMins + ' min walk, ' + c.route + ')');
       arrivalsForStop(c.stop.name).slice(0, 2).forEach(function(a) {
@@ -3938,6 +3933,7 @@ legend.addTo(leafletMap);
 var userLatLng = null;
 var userMarker = null;
 var userAccCircle = null;
+var shouldSetNearestStopFromLocateClick = false;
 
 function haversineDist(lat1, lon1, lat2, lon2) {
   var R = 6371000;
@@ -3980,20 +3976,16 @@ function updateLocationRec() {
   var lat = userLatLng[0], lon = userLatLng[1];
   var candidates = nearestStopsToUser(lat, lon, 5);
 
-  // For each candidate stop, find the soonest arriving shuttle
-  var recs = [];
-  candidates.forEach(function(c) {
+  var recs = candidates.map(function(c) {
     var arrivals = arrivalsForStop(c.stop.name);
-    if (arrivals.length) {
-      recs.push({stop: c.stop, route: c.route, color: c.color, dist: c.dist, best: arrivals[0]});
-    }
+    return {stop: c.stop, route: c.route, color: c.color, dist: c.dist, best: arrivals[0] || null};
   });
   if (!recs.length) return;
 
-  // Sort by total time = walk time + ETA
+  // This panel is "Stops Near You", so keep it ordered by physical distance.
+  // Faster-but-farther choices still appear as alternatives and in the AI card.
   recs.sort(function(a, b) {
-    var walkA = a.dist / 80, walkB = b.dist / 80; // 80 m/min walking
-    return (walkA + a.best.etaMinutes) - (walkB + b.best.etaMinutes);
+    return a.dist - b.dist;
   });
 
   var html = '';
@@ -4002,17 +3994,23 @@ function updateLocationRec() {
     var walkMins = Math.max(1, Math.ceil(rec.dist / 80));
     var isBest = i === 0;
     html += '<div class="card' + (isBest ? ' loc-rec-best' : '') + '" style="border-left-color:' + rec.color + ';">';
-    if (isBest) html += '<div class="loc-rec-badge">⭐ RECOMMENDED</div>';
+    if (isBest) html += '<div class="loc-rec-badge">⭐ NEAREST</div>';
     html += '<div class="title">' + escapeHtml(rec.stop.name) + '</div>';
     html += '<div class="body">' + distStr + ' away · ~' + walkMins + ' min walk</div>';
-    html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:7px;">'
-      + '<span class="loc-rec-eta">' + rec.best.etaMinutes + ' min</span>'
-      + '<span style="font-size:10px;color:' + rec.color + ';font-weight:800;">' + escapeHtml(rec.best.shuttle.route) + '</span>'
-      + '</div>';
-    var capColor = rec.best.shuttle.capacity_pct >= 85 ? '#ef4444' : rec.best.shuttle.capacity_pct >= 60 ? '#f59e0b' : '#22c55e';
-    html += '<div class="body" style="margin-top:3px;">Capacity: <span style="color:' + capColor + ';font-weight:700;">'
-      + rec.best.shuttle.capacity_pct + '%</span> · ' + escapeHtml(rec.best.shuttle.label) + '</div>';
-    html += '<button onclick="sendMessage(\'Based on my current location, should I take the ' + rec.best.shuttle.route.replace(/'/g,"\\'") + ' from ' + rec.stop.name.replace(/'/g,"\\'") + '?\')" '
+    var askText = 'Based on my current location, should I wait at ' + rec.stop.name + '?';
+    if (rec.best) {
+      html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:7px;">'
+        + '<span class="loc-rec-eta">' + rec.best.etaMinutes + ' min</span>'
+        + '<span style="font-size:10px;color:' + rec.color + ';font-weight:800;">' + escapeHtml(rec.best.shuttle.route) + '</span>'
+        + '</div>';
+      var capColor = rec.best.shuttle.capacity_pct >= 85 ? '#ef4444' : rec.best.shuttle.capacity_pct >= 60 ? '#f59e0b' : '#22c55e';
+      html += '<div class="body" style="margin-top:3px;">Capacity: <span style="color:' + capColor + ';font-weight:700;">'
+        + rec.best.shuttle.capacity_pct + '%</span> · ' + escapeHtml(rec.best.shuttle.label) + '</div>';
+      askText = 'Based on my current location, should I take the ' + rec.best.shuttle.route + ' from ' + rec.stop.name + '?';
+    } else {
+      html += '<div class="body" style="margin-top:7px;">No shuttle is currently approaching this stop.</div>';
+    }
+    html += '<button onclick="sendMessage(\'' + askText.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')" '
       + 'style="margin-top:8px;width:100%;background:transparent;border:1px solid #334155;color:#93c5fd;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;" '
       + 'onmouseover="this.style.background=\'#1e3a5f\'" onmouseout="this.style.background=\'transparent\'">Ask AI about this option ›</button>';
     html += '</div>';
@@ -4044,8 +4042,46 @@ function centerOnUser() {
   if (userLatLng) { leafletMap.setView(userLatLng, 16); }
 }
 
+function setNearestStopFromLocation(lat, lon, options) {
+  options = options || {};
+  var nearest = nearestStopToUser(lat, lon);
+  if (!nearest || !nearest.stop || !nearest.stop.name) return false;
+
+  var shouldUpdate = options.force === true ||
+    (!hasUserSelectedStopManually && !hasAutoSelectedNearestStop && nearest.stop.name !== selectedStop);
+  if (!shouldUpdate) return false;
+
+  onStopChange(nearest.stop.name, {manual:false, recenter:false});
+  hasAutoSelectedNearestStop = true;
+  if (options.force === true) {
+    hasUserSelectedStopManually = false;
+  }
+  if (options.toast !== false) {
+    showToast('Closest stop set to ' + nearest.stop.name, 'success');
+  }
+  return true;
+}
+
+function showMyLocation() {
+  shouldSetNearestStopFromLocateClick = true;
+  if (userLatLng) {
+    centerOnUser();
+    setNearestStopFromLocation(userLatLng[0], userLatLng[1], {force:true, toast:true});
+    shouldSetNearestStopFromLocateClick = false;
+    return;
+  }
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(onLocationSuccess, onLocationError,
+      {enableHighAccuracy:true, maximumAge:0, timeout:12000});
+  } else {
+    showToast('Location is not available in this browser.', 'warn');
+  }
+}
+
 function onLocationSuccess(pos) {
   var lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+  var shouldForceNearestStop = shouldSetNearestStopFromLocateClick;
+  shouldSetNearestStopFromLocateClick = false;
   userLatLng = [lat, lon];
   document.getElementById('locate-btn').classList.add('tracking');
   if (!userMarker) {
@@ -4066,24 +4102,16 @@ function onLocationSuccess(pos) {
   updateLocationRec();
   renderSuggestedQuestions();
   renderProactiveAlert();
-  var nearest = nearestStopToUser(lat, lon);
-  if (
-    nearest &&
-    nearest.stop &&
-    nearest.stop.name &&
-    !hasUserSelectedStopManually &&
-    !hasAutoSelectedNearestStop &&
-    nearest.stop.name !== selectedStop
-  ) {
-    onStopChange(nearest.stop.name, {manual:false, recenter:false});
-    hasAutoSelectedNearestStop = true;
-    showToast('Closest stop set to ' + nearest.stop.name, 'success');
-  }
+  setNearestStopFromLocation(lat, lon, {force:shouldForceNearestStop, toast:shouldForceNearestStop});
   if (isTourActive()) renderTourStep();
 }
 
 function onLocationError(err) {
   console.warn('Geolocation unavailable:', err.message);
+  if (shouldSetNearestStopFromLocateClick) {
+    shouldSetNearestStopFromLocateClick = false;
+    showToast('Could not get your current location.', 'warn');
+  }
 }
 
 if (navigator.geolocation) {
