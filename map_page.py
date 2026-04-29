@@ -975,7 +975,10 @@ _AI_SYSTEM_PROMPT = (
     "If the context says the destination is not set because it matches the origin, do not recommend "
     "boarding a shuttle for a trip. Ask the rider to choose a different destination first. "
     "Shuttle IDs: comm-1=Comm Ave 1, comm-2=Comm Ave 2, newton-1=Newton Express 1, newton-2=Newton Express 2. "
-    "Decide the response format yourself. Use plain text only when the user asks a follow-up explanation, "
+    "Decide the response format yourself. For questions asking which shuttle to take, what the rider should "
+    "take right now, whether they should take a specific shuttle, or comparing fastest/most comfortable options, "
+    "always use the structured JSON schema so the UI can render a formatted recommendation card. "
+    "Use plain text only when the user asks a follow-up explanation, "
     "asks about prediction confidence or how certain you are, asks how you reasoned, asks a general custom question, "
     "or does not need an actionable shuttle card. Use structured JSON only when the answer should create "
     "a rider action card, such as a next-arrival check, route recommendation, comparison, schedule or "
@@ -1112,7 +1115,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     display:flex;flex-direction:column;background:#1e293b;border-right:1px solid #334155;overflow:hidden;}
   #ai-header {padding:12px 14px 10px;border-bottom:1px solid #334155;flex-shrink:0;
     background:linear-gradient(180deg,#1e3a5f 0%,#1e293b 100%);}
-  #ai-title  {font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:8px;}
+  #ai-title  {font-size:18px;font-weight:700;color:#f1f5f9;margin-bottom:8px;}
   #key-row   {display:flex;gap:6px;margin-bottom:7px;}
   #api-key-inp {flex:1;background:#0f172a;border:1px solid #334155;color:#f1f5f9;
     padding:7px 10px;border-radius:8px;font-size:12px;outline:none;}
@@ -1390,7 +1393,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #map-panel  {flex:1;display:flex;flex-direction:column;min-width:300px;overflow:hidden;}
   #map-header {padding:10px 16px;background:linear-gradient(180deg,#243554 0%,#1e293b 100%);border-bottom:1px solid #334155;
     display:flex;align-items:center;gap:12px;flex-shrink:0;height:44px;}
-  #map-header h2 {font-size:15px;font-weight:700;color:#f1f5f9;}
+  #map-header h2 {font-size:18px;font-weight:700;color:#f1f5f9;}
   #map-header span {font-size:11px;color:#64748b;}
   #map-body   {display:grid;grid-template-columns:minmax(0,1fr) 300px;overflow:hidden;}
   #map        {width:100%;}
@@ -1542,7 +1545,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     #input-row {padding:8px;gap:5px;}
     #user-inp, #send-btn, #upload-btn {font-size:12px;}
     #map-header {padding:8px 12px;height:40px;gap:8px;}
-    #map-header h2 {font-size:14px;}
+    #map-header h2 {font-size:18px;}
     #map-header span {font-size:10px;}
     #loc-banner {padding:6px 12px;font-size:11px;}
     #map-body {grid-template-columns:minmax(0,1fr) 285px;}
@@ -3536,6 +3539,136 @@ function parseCapacityFromUserMsg(text) {
   return pct;
 }
 
+function isShuttleChoiceQuestion(text) {
+  var lower = String(text || '').toLowerCase();
+  var asksForChoice = /which\s+shuttle|what\s+shuttle|should\s+i\s+take|do\s+you\s+recommend|best\s+(option|shuttle|route)|fastest\s+(option|shuttle|route)|take\s+the\s+/.test(lower);
+  var shuttleContext = /shuttle|bus|route|comm\s+ave|newton|to\s+/.test(lower);
+  var explanatoryFollowUp = /why|how confident|confidence|how certain|how did|explain/.test(lower);
+  return asksForChoice && shuttleContext && !explanatoryFollowUp;
+}
+
+function capacityLabelForPct(pct) {
+  return pct >= 85 ? 'Very crowded' : pct >= 60 ? 'Moderate' : 'Light';
+}
+
+function buildShuttleChoiceStructuredReply(userMsg) {
+  if (!isShuttleChoiceQuestion(userMsg)) return null;
+
+  var needsDestination = selectedStop === destinationStop;
+  if (needsDestination) {
+    return {
+      summary: 'Your destination is still set to ' + selectedStop + ', so I need a different destination before recommending a trip.',
+      recommended_option: {
+        action: 'Choose a destination stop first.',
+        route: null,
+        bus: null,
+        eta_minutes: 0,
+        reasoning: ['The origin and destination currently match.', 'A shuttle recommendation needs a real destination.']
+      },
+      confidence: {score: 95, label: 'high', explanation: 'The selected trip is incomplete because the destination matches the starting stop.'},
+      alternatives: [],
+      what_if_options: [],
+      proactive_alert: null,
+      follow_up_question: 'Where are you trying to go?',
+      delay_update: null,
+      capacity_update: null
+    };
+  }
+
+  var useCurrentLocation = /current location|near me|nearby|right now/.test(String(userMsg || '').toLowerCase()) && userLatLng;
+  var candidates = [];
+  if (useCurrentLocation) {
+    nearestStopsToUser(userLatLng[0], userLatLng[1], 5).forEach(function(c) {
+      var walkMins = Math.max(1, Math.ceil(c.dist / 80));
+      arrivalsForStop(c.stop.name).slice(0, 2).forEach(function(a) {
+        candidates.push({
+          stopName: c.stop.name,
+          route: a.shuttle.route,
+          bus: a.shuttle.label,
+          eta: a.etaMinutes,
+          capacityPct: a.shuttle.capacity_pct,
+          walkMins: walkMins,
+          distanceMeters: c.dist,
+          totalMins: walkMins + a.etaMinutes,
+          isAlternateStop: c.stop.name !== selectedStop
+        });
+      });
+    });
+  } else {
+    arrivalsForStop(selectedStop).slice(0, 4).forEach(function(a) {
+      candidates.push({
+        stopName: selectedStop,
+        route: a.shuttle.route,
+        bus: a.shuttle.label,
+        eta: a.etaMinutes,
+        capacityPct: a.shuttle.capacity_pct,
+        walkMins: 0,
+        distanceMeters: 0,
+        totalMins: a.etaMinutes,
+        isAlternateStop: false
+      });
+    });
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort(function(a, b) {
+    if (a.totalMins !== b.totalMins) return a.totalMins - b.totalMins;
+    return a.capacityPct - b.capacityPct;
+  });
+
+  var best = candidates[0];
+  var capLabel = capacityLabelForPct(best.capacityPct);
+  var action = best.isAlternateStop
+    ? 'Walk to ' + best.stopName + ' and take ' + best.bus + '.'
+    : 'Take ' + best.bus + ' from ' + best.stopName + '.';
+  var summary = best.isAlternateStop
+    ? 'Best option: walk about ' + best.walkMins + ' min to ' + best.stopName + ', then board ' + best.bus + '. Combined walk-plus-wait is about ' + best.totalMins + ' min.'
+    : 'Best option: board ' + best.bus + ' at ' + best.stopName + '. It is arriving in about ' + best.eta + ' min.';
+
+  var reasons = [];
+  reasons.push(best.isAlternateStop
+    ? 'This has the lowest combined walk-plus-wait time among nearby stops.'
+    : 'This is the soonest useful arrival from your selected stop.');
+  reasons.push('Capacity is ' + best.capacityPct + '% (' + capLabel + ').');
+  if (best.route) reasons.push('Route: ' + best.route + '.');
+
+  var alternatives = candidates.slice(1, 3).map(function(c) {
+    var altAction = c.isAlternateStop
+      ? 'Walk to ' + c.stopName + ' for ' + c.bus
+      : 'Wait for ' + c.bus + ' at ' + c.stopName;
+    return {
+      action: altAction,
+      tradeoff: 'about ' + c.totalMins + ' min total, ' + c.capacityPct + '% capacity'
+    };
+  });
+
+  var confidenceScore = best.eta <= 5 ? 88 : best.eta <= 15 ? 82 : 72;
+  if (best.capacityPct >= 85) confidenceScore -= 4;
+  var confidenceLabel = confidenceScore >= 80 ? 'high' : confidenceScore >= 60 ? 'medium' : 'low';
+
+  return {
+    summary: summary,
+    recommended_option: {
+      action: action,
+      route: best.route,
+      bus: best.bus,
+      eta_minutes: best.totalMins,
+      reasoning: reasons
+    },
+    confidence: {
+      score: confidenceScore,
+      label: confidenceLabel,
+      explanation: 'Based on the current live ETA, nearby-stop walk time, and projected crowding.'
+    },
+    alternatives: alternatives,
+    what_if_options: [],
+    proactive_alert: best.capacityPct >= 85 ? best.bus + ' is projected to be very crowded.' : null,
+    follow_up_question: null,
+    delay_update: null,
+    capacity_update: null
+  };
+}
+
 function parseDelay(text) {
   // pattern: DELAY_UPDATE:{shuttle_id:X,delay_minutes:N}
   var m = text.match(/DELAY_UPDATE:\{shuttle_id:([^,]+),delay_minutes:(-?\d+)\}/);
@@ -3673,6 +3806,12 @@ async function sendMessage(prefilledMessage) {
       if (parsedFallback.shuttleId) {
         clean = escapeHtml(parsedFallback.clean || raw).replace(/\n/g,'<br>');
         structured = {delay_update: {shuttle_id: parsedFallback.shuttleId, delay_minutes: parsedFallback.mins}};
+      } else {
+        var recommendationFallback = buildShuttleChoiceStructuredReply(userMsg);
+        if (recommendationFallback) {
+          structured = recommendationFallback;
+          clean = renderStructuredReply(structured) || clean;
+        }
       }
     }
     var assistantMemory = structured ? JSON.stringify(structured) : (raw || '');

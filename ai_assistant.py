@@ -459,6 +459,10 @@ Rules:
 - Keep the tone practical, calm, and student-friendly.
 - If information is missing, say that clearly.
 - Decide the response format yourself:
+  - For questions asking which shuttle to take, what the rider should take right
+    now, whether they should take a specific shuttle, or comparing fastest/most
+    comfortable options, always use the structured JSON schema so the UI can
+    render a formatted recommendation card.
   - Use plain text only when the user asks a follow-up explanation, asks about
     confidence/uncertainty, asks how you reasoned, asks a general custom question,
     or does not need an actionable shuttle card.
