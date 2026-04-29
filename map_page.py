@@ -2476,8 +2476,9 @@ async function saveProfileToSupabase(userId) {
   }
 }
 
-async function deleteProfileFromSupabase(userId) {
+async function deleteProfileAndScheduleFromSupabase(userId) {
   if (!supabaseEnabled()) return;
+  await supabaseRequest('user_schedules?user_id=eq.' + encodeURIComponent(userId), {method: 'DELETE'});
   await supabaseRequest('user_profiles?user_id=eq.' + encodeURIComponent(userId), {method: 'DELETE'});
 }
 
@@ -2586,18 +2587,21 @@ function saveProfile() {
 }
 
 function deleteProfile() {
-  if (!confirm('Delete your rider profile? This cannot be undone.')) return;
+  if (!confirm('Delete your rider profile and uploaded class schedule? This cannot be undone.')) return;
   userProfile = {timing_style:'balanced', crowd_style:'balanced', max_wait_minutes:10, preferred_route:'', nickname:''};
+  userSchedule = null;
+  userScheduleEntries = [];
+  document.getElementById('schedule-file').value = '';
   writeLocalProfile();
-  deleteProfileFromSupabase(ensureUserId()).catch(function(error) {
-    console.warn('Could not delete Supabase profile', error);
-    showToast('Profile cleared locally; cloud delete failed', 'warn');
+  deleteProfileAndScheduleFromSupabase(ensureUserId()).catch(function(error) {
+    console.warn('Could not delete Supabase profile and schedule', error);
+    showToast('Profile and schedule cleared locally; cloud delete failed', 'warn');
   });
   syncProfileUi();
   renderSuggestedQuestions();
   renderProactiveAlert();
   closeProfileModal();
-  showToast('🗑️ Rider profile deleted', 'warn');
+  showToast('🗑️ Rider profile and schedule deleted', 'warn');
 }
 
 function profileSummaryLines() {
