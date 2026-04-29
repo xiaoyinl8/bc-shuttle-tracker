@@ -1,8 +1,10 @@
 import json
+import os
 from urllib.parse import quote
 
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from ai_assistant import ensure_ai_state
 from interaction_ui import apply_shared_styles
@@ -1010,6 +1012,36 @@ _AI_SYSTEM_PROMPT = (
 )
 
 
+def _get_secret_value(*names: str) -> str:
+    for name in names:
+        try:
+            value = st.secrets.get(name, "")
+        except StreamlitSecretNotFoundError:
+            value = ""
+        if value:
+            return str(value)
+        env_value = os.getenv(name, "")
+        if env_value:
+            return env_value
+    return ""
+
+
+def _get_supabase_config() -> dict[str, str | bool]:
+    url = _get_secret_value("SUPABASE_URL", "supabase_url")
+    anon_key = _get_secret_value(
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_KEY",
+        "SUPABASE_PUBLIC_KEY",
+        "supabase_anon_key",
+        "supabase_key",
+    )
+    return {
+        "url": url.rstrip("/"),
+        "anonKey": anon_key,
+        "enabled": bool(url and anon_key),
+    }
+
+
 def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  # noqa: PLR0915 (long but intentional)
     TOTAL_H = 900   # iframe needs real render space; CSS below removes its wrapper from page flow
     payload = build_map_payload(selected_stop)
@@ -1026,6 +1058,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     show_ai_panel_json = json.dumps(show_ai_panel)
     ai_chat_history_json = json.dumps(st.session_state.ai_chat_history)
     embedded_ai_error_json = json.dumps(st.session_state.get("embedded_ai_error", ""))
+    supabase_config_json = json.dumps(_get_supabase_config())
     destination_stop = payload["destination_stop"]
     stop_options = "".join(
         '<option value="{v}"{sel}>{v}</option>'.format(
@@ -1056,6 +1089,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         f"var SHOW_AI_PANEL={show_ai_panel_json};"
         f"var AI_CHAT_HISTORY={ai_chat_history_json};"
         f"var EMBEDDED_AI_ERROR={embedded_ai_error_json};"
+        f"var SUPABASE_CONFIG={supabase_config_json};"
         f"</script>"
     )
 
@@ -1165,17 +1199,21 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
   #profile-name {font-size:12px;font-weight:700;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   #profile-modal-backdrop {position:fixed;inset:0;background:rgba(15,23,42,.48);display:none;align-items:flex-start;justify-content:flex-end;z-index:1400;}
   #profile-modal-backdrop.open {display:flex;}
-  #profile-modal {width:min(360px, calc(100vw - 24px));margin:60px 14px 0 0;background:rgba(255,255,255,0.92);color:#0f172a;border-radius:20px;
-    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;border:1px solid rgba(191,219,254,0.8);
+  #profile-modal {width:min(360px, calc(100vw - 24px));max-height:calc(100vh - 24px);margin:12px 14px 0 0;background:rgba(255,255,255,0.92);color:#0f172a;border-radius:20px;
+    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;border:1px solid rgba(191,219,254,0.8);display:flex;flex-direction:column;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+  .profile-head {flex:0 0 auto;}
   .profile-head {padding:16px 18px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
   .profile-head h3 {font-size:18px;font-weight:900;letter-spacing:-.02em;}
   .profile-head p {font-size:12px;color:#64748b;line-height:1.45;margin-top:4px;}
   .profile-close {border:none;background:#eff6ff;color:#1d4ed8;border-radius:999px;width:30px;height:30px;cursor:pointer;font-size:16px;}
-  .profile-body {padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 96px);overflow-y:auto;}
+  .profile-body {padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;flex:1 1 auto;min-height:0;overflow-y:auto;}
   .profile-group {display:flex;flex-direction:column;gap:8px;}
   .profile-label {font-size:12px;font-weight:800;color:#334155;letter-spacing:.02em;}
   .profile-help {font-size:11px;color:#64748b;line-height:1.45;}
+  .profile-sync {border:1px solid #dbeafe;background:#eff6ff;color:#1e3a8a;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.35;}
+  .profile-sync.warn {border-color:#fed7aa;background:#fff7ed;color:#9a3412;}
+  .profile-sync.ok {border-color:#bbf7d0;background:#f0fdf4;color:#166534;}
   .profile-input, .profile-select {width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:13px;color:#0f172a;outline:none;}
   .profile-input:focus, .profile-select:focus {border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12);}
   .profile-options {display:flex;flex-wrap:wrap;gap:8px;}
@@ -1185,6 +1223,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
     font-size:12px;font-weight:700;color:#334155;cursor:pointer;transition:all .15s ease;}
   .profile-choice input:checked + span {background:#dbeafe;border-color:#60a5fa;color:#1d4ed8;}
   .profile-actions {display:flex;gap:10px;justify-content:flex-end;padding-top:4px;}
+  .profile-footer-actions {position:sticky;bottom:-18px;margin:0 -18px -18px;padding:12px 18px 14px;background:rgba(255,255,255,0.96);border-top:1px solid #e2e8f0;z-index:2;}
   .profile-save, .profile-secondary {border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;}
   .profile-save {background:#2563eb;color:#fff;}
   .profile-save:hover {background:#1d4ed8;}
@@ -1642,6 +1681,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
       <button class="profile-close" onclick="closeProfileModal()" title="Close profile">✕</button>
     </div>
     <div class="profile-body">
+      <div id="profile-sync-status" class="profile-sync">Cloud sync status is checking...</div>
       <div class="profile-group">
         <label class="profile-label" for="profile-nickname">Nickname</label>
         <input id="profile-nickname" class="profile-input" type="text" placeholder="ex. Maya"/>
@@ -1696,7 +1736,7 @@ def render_split_app(selected_stop: str, show_ai_panel: bool = True) -> None:  #
         </div>
       </div>
 
-      <div class="profile-actions">
+      <div class="profile-actions profile-footer-actions">
         <button class="profile-delete" onclick="deleteProfile()">🗑 Delete profile</button>
         <button class="profile-secondary" onclick="closeProfileModal()">Cancel</button>
         <button class="profile-save" onclick="saveProfile()">Save profile</button>
@@ -2255,7 +2295,66 @@ function getScheduleEntriesStorageKey() {
   return 'bc_shuttle_schedule_entries_v1';
 }
 
-function loadProfile() {
+function getUserIdStorageKey() {
+  return 'bc_shuttle_user_id_v1';
+}
+
+function ensureUserId() {
+  var existing = localStorage.getItem(getUserIdStorageKey());
+  if (existing) return existing;
+  var generated = (window.crypto && window.crypto.randomUUID)
+    ? window.crypto.randomUUID()
+    : 'user-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem(getUserIdStorageKey(), generated);
+  return generated;
+}
+
+function supabaseEnabled() {
+  return Boolean(SUPABASE_CONFIG && SUPABASE_CONFIG.enabled && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
+}
+
+function setProfileSyncStatus(message, state) {
+  var el = document.getElementById('profile-sync-status');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'profile-sync' + (state ? ' ' + state : '');
+}
+
+function summarizeSupabaseError(error) {
+  var raw = error && error.message ? error.message : String(error || 'Unknown error');
+  try {
+    var parsed = JSON.parse(raw);
+    if (parsed.message) return parsed.message;
+    if (parsed.hint) return parsed.hint;
+  } catch (parseError) {
+    // Supabase sometimes returns plain text or an empty body.
+  }
+  return raw.length > 160 ? raw.slice(0, 157) + '...' : raw;
+}
+
+async function supabaseRequest(path, options) {
+  if (!supabaseEnabled()) return null;
+  var resp;
+  try {
+    var requestUrl = new URL(path, SUPABASE_CONFIG.url.replace(/\/+$/, '') + '/rest/v1/').toString();
+    var headers = Object.assign({
+      apikey: SUPABASE_CONFIG.anonKey,
+      'Content-Type': 'application/json'
+    }, (options && options.headers) || {});
+    resp = await fetch(requestUrl, Object.assign({}, options || {}, {headers: headers}));
+  } catch (error) {
+    throw new Error('Supabase browser request failed for ' + path + ': ' + error.message);
+  }
+  if (!resp.ok) {
+    var text = await resp.text();
+    throw new Error(text || ('Supabase request failed with status ' + resp.status));
+  }
+  if (resp.status === 204) return null;
+  var responseText = await resp.text();
+  return responseText ? JSON.parse(responseText) : null;
+}
+
+function readLocalProfile() {
   try {
     var saved = localStorage.getItem(getProfileStorageKey());
     if (saved) {
@@ -2276,7 +2375,61 @@ function loadProfile() {
   }
 }
 
-function saveProfileToStorage() {
+async function loadProfileFromSupabase(userId) {
+  if (!supabaseEnabled()) return false;
+  var profileRows = await supabaseRequest(
+    'user_profiles?user_id=eq.' + encodeURIComponent(userId) + '&select=*',
+    {method: 'GET'}
+  );
+  var scheduleRows = await supabaseRequest(
+    'user_schedules?user_id=eq.' + encodeURIComponent(userId) + '&select=*',
+    {method: 'GET'}
+  );
+  var remoteProfile = Array.isArray(profileRows) ? profileRows[0] : null;
+  var remoteSchedule = Array.isArray(scheduleRows) ? scheduleRows[0] : null;
+
+  if (remoteProfile) {
+    userProfile = Object.assign({}, userProfile, {
+      nickname: remoteProfile.nickname || '',
+      timing_style: remoteProfile.timing_style || 'balanced',
+      crowd_style: remoteProfile.crowd_style || 'balanced',
+      max_wait_minutes: String(remoteProfile.max_wait_minutes || '10'),
+      preferred_route: remoteProfile.preferred_route || ''
+    });
+  }
+  if (remoteSchedule) {
+    userSchedule = remoteSchedule.raw_text || null;
+    userScheduleEntries = Array.isArray(remoteSchedule.parsed_entries) ? remoteSchedule.parsed_entries : [];
+  }
+
+  return Boolean(remoteProfile || remoteSchedule);
+}
+
+async function loadProfile() {
+  readLocalProfile();
+  var userId = ensureUserId();
+  if (!supabaseEnabled()) {
+    setProfileSyncStatus('Cloud sync is off. Check SUPABASE_URL and SUPABASE_ANON_KEY in Streamlit secrets.', 'warn');
+    return;
+  }
+  try {
+    var loadedRemote = await loadProfileFromSupabase(userId);
+    if (loadedRemote) {
+      writeLocalProfile();
+      setProfileSyncStatus('Cloud sync connected. Loaded profile from Supabase.', 'ok');
+    } else if (userProfile.nickname || userSchedule) {
+      await saveProfileToSupabase(userId);
+      setProfileSyncStatus('Cloud sync connected. Local profile copied to Supabase.', 'ok');
+    } else {
+      setProfileSyncStatus('Cloud sync connected. No saved profile yet.', 'ok');
+    }
+  } catch (error) {
+    console.warn('Could not restore Supabase profile; using local profile', error);
+    setProfileSyncStatus('Cloud sync failed: ' + summarizeSupabaseError(error), 'warn');
+  }
+}
+
+function writeLocalProfile() {
   localStorage.setItem(getProfileStorageKey(), JSON.stringify(userProfile));
   if (userSchedule) {
     localStorage.setItem(getScheduleStorageKey(), userSchedule);
@@ -2288,6 +2441,66 @@ function saveProfileToStorage() {
   } else {
     localStorage.removeItem(getScheduleEntriesStorageKey());
   }
+}
+
+async function saveProfileToSupabase(userId) {
+  if (!supabaseEnabled()) return;
+  var now = new Date().toISOString();
+  await supabaseRequest('user_profiles?on_conflict=user_id', {
+    method: 'POST',
+    headers: {Prefer: 'resolution=merge-duplicates'},
+    body: JSON.stringify({
+      user_id: userId,
+      nickname: userProfile.nickname || null,
+      timing_style: userProfile.timing_style || 'balanced',
+      crowd_style: userProfile.crowd_style || 'balanced',
+      max_wait_minutes: parseInt(userProfile.max_wait_minutes || '10', 10),
+      preferred_route: userProfile.preferred_route || null,
+      updated_at: now
+    })
+  });
+
+  if (userSchedule) {
+    await supabaseRequest('user_schedules?on_conflict=user_id', {
+      method: 'POST',
+      headers: {Prefer: 'resolution=merge-duplicates'},
+      body: JSON.stringify({
+        user_id: userId,
+        raw_text: userSchedule,
+        parsed_entries: Array.isArray(userScheduleEntries) ? userScheduleEntries : [],
+        updated_at: now
+      })
+    });
+  } else {
+    await supabaseRequest('user_schedules?user_id=eq.' + encodeURIComponent(userId), {method: 'DELETE'});
+  }
+}
+
+async function deleteProfileFromSupabase(userId) {
+  if (!supabaseEnabled()) return;
+  await supabaseRequest('user_profiles?user_id=eq.' + encodeURIComponent(userId), {method: 'DELETE'});
+}
+
+function saveProfileToStorage() {
+  writeLocalProfile();
+  if (!supabaseEnabled()) {
+    setProfileSyncStatus('Saved locally. Cloud sync is off because Supabase secrets are missing.', 'warn');
+    return Promise.resolve(false);
+  }
+  setProfileSyncStatus('Saving profile to Supabase...', '');
+  return saveProfileToSupabase(ensureUserId())
+    .then(function() {
+      setProfileSyncStatus('Cloud sync saved just now.', 'ok');
+      showToast('Profile saved to Supabase', 'success');
+      return true;
+    })
+    .catch(function(error) {
+      var reason = summarizeSupabaseError(error);
+      console.warn('Could not sync profile to Supabase', error);
+      setProfileSyncStatus('Cloud sync failed: ' + reason, 'warn');
+      showToast('Profile saved locally; cloud sync failed', 'warn');
+      return false;
+    });
 }
 
 function currentNickname() {
@@ -2375,7 +2588,11 @@ function saveProfile() {
 function deleteProfile() {
   if (!confirm('Delete your rider profile? This cannot be undone.')) return;
   userProfile = {timing_style:'balanced', crowd_style:'balanced', max_wait_minutes:10, preferred_route:'', nickname:''};
-  saveProfileToStorage();
+  writeLocalProfile();
+  deleteProfileFromSupabase(ensureUserId()).catch(function(error) {
+    console.warn('Could not delete Supabase profile', error);
+    showToast('Profile cleared locally; cloud delete failed', 'warn');
+  });
   syncProfileUi();
   renderSuggestedQuestions();
   renderProactiveAlert();
@@ -3014,7 +3231,7 @@ document.getElementById('schedule-file').addEventListener('change', async functi
       var parsedSchedule = normalizeSchedulePayload(data.choices[0].message.content);
       userSchedule = parsedSchedule.rawText;
       userScheduleEntries = parsedSchedule.entries;
-      saveProfileToStorage();
+      await saveProfileToStorage();
       var label = file.name.length > 24 ? file.name.slice(0,22)+'…' : file.name;
       document.getElementById('schedule-label').textContent = 'Schedule loaded: ' + label;
       document.getElementById('schedule-badge').style.display = 'flex';
@@ -3368,8 +3585,8 @@ function toggleTheme() {
 })();
 
 // Show server-key badge or user key input depending on configuration
-(function() {
-  loadProfile();
+(async function() {
+  await loadProfile();
   syncProfileUi();
   var keyRow = document.getElementById('key-row');
   var keyInp = document.getElementById('api-key-inp');
